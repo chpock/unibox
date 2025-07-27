@@ -1,0 +1,7 @@
+apiVersion: v2
+description: Unibox - universal Helm chart
+name: unibox
+version: 0.1.0
+maintainers:
+- name: Konstantin Kushnir
+  email: chpock@gmail.com
