@@ -419,6 +419,7 @@
       "enabled"
       "name" "nameOverride"
       "container" "containers"
+      "service" "services"
       "updateStrategy"
       "annotations" "podAnnotations"
       "labels" "podLabels"
@@ -458,6 +459,13 @@
     )
     "container.env.field" (list
       "secret" "configMap" "resourceField" "field"
+    )
+    "service" (list
+      "props" "properties"
+      "enabled"
+      "name" "nameOverride"
+      "annotations"
+      "labels"
     )
   ) . | toJson -}}
 {{- end -}}
