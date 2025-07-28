@@ -78,11 +78,10 @@
     {{- if list .scope "name" "scalar" | include "unibox.validate.type" -}}
       {{ $name = include "unibox.render" (dict "value" .scope.name "ctx" .ctx "scope" .scope) -}}
     {{- end -}}
-    {{- if .isFull -}}
-      {{- printf "%s-%s" (include "unibox.releaseName" .ctx) $name | trunc 63 | trimSuffix "-" -}}
-    {{- else -}}
-      {{- $name | trunc 63 | trimSuffix "-" -}}
+    {{- if and .isFull (or .ctx.Values.nameOverride (ne .ctx.Release.Name (include "unibox.appName" .ctx))) -}}
+      {{- $name = printf "%s-%s" (include "unibox.releaseName" .ctx) $name -}}
     {{- end -}}
+    {{- $name | trunc 63 | trimSuffix "-" -}}
   {{- end -}}
 {{- end -}}
 
