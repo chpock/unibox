@@ -5,7 +5,7 @@
   {{- template "unibox.container.command" . -}}
   {{- template "unibox.container.args" . -}}
   {{- template "unibox.container.env" . -}}
-  {{- /* template "unibox.container.ports" . */ -}}
+  {{- template "unibox.container.ports" . -}}
 {{- end -}}
 
 {{- define "unibox.container.image" -}}
@@ -217,4 +217,27 @@
     {{- include "unibox.render" (dict "value" .scope "ctx" .ctx "scope" .scopeLocal) | quote | printf "\nvalue: %s" -}}
   {{- end -}}
 
+{{- end -}}
+
+{{- define "unibox.container.ports" -}}
+  {{- if (list .scope "ports" "map" | include "unibox.validate.type") -}}
+
+    {{- print "\nports:" -}}
+
+    {{- include "unibox.foreach" (dict
+      "singleKey" false
+      "pluralKey" "ports"
+      "callback" "unibox.container.ports.entry"
+      "asArray" true
+      "isEntryMap" false
+      "ctx" .ctx "scope" .scope
+    ) -}}
+
+  {{- end -}}
+{{- end -}}
+
+{{- define "unibox.container.ports.entry" -}}
+  {{- quote .name | printf "name: %s" -}}
+  {{- include "unibox.render.integer" (dict "scope" .scopeParent "key" .name "ctx" .ctx "scopeLocal" .scopeLocal) | atoi | printf "\ncontainerPort: %d" -}}
+  {{- printf "\nprotocol: TCP" -}}
 {{- end -}}

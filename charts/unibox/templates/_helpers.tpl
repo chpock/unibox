@@ -39,6 +39,29 @@
   {{- end -}}
 {{- end -}}
 
+{{- define "unibox.render.integer" -}}
+  {{- $value := index .scope .key -}}
+  {{- $result := "" -}}
+  {{- if (kindIs "int" $value) -}}
+    {{- $result = $value -}}
+  {{- else if (kindIs "float64" $value) -}}
+    {{- $rounded := round $value 0 -}}
+    {{- if eq (printf "%v" $rounded) (printf "%v" $value) -}}
+      {{- $result = int64 $rounded -}}
+    {{- end -}}
+  {{- else if (kindIs "string" $value) -}}
+    {{- $value = include "unibox.render" (dict "value" $value "ctx" .ctx "scope" .scopeLocal) -}}
+    {{- if (regexMatch "^\\d+$" $value) -}}
+      {{- $result = $value -}}
+    {{- end -}}
+  {{- end -}}
+  {{- $result = toString $result -}}
+  {{- if eq $result "" -}}
+    {{- "the key is expected to have an integer type or a string that can be rendered as an integer number" | list .scope .key "" | include "unibox.validate.type.fail" -}}
+  {{- end -}}
+  {{- $result -}}
+{{- end -}}
+
 {{- define "unibox.name" -}}
   {{- if list .scope "nameOverride" "scalar" | include "unibox.validate.type" -}}
     {{- if (hasKey .scope "name") -}}
@@ -409,6 +432,7 @@
       "env"
       "command"
       "args"
+      "ports"
     )
     "container.image" (list
       "repository"
