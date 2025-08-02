@@ -78,8 +78,11 @@
     {{- if list .scope "name" "scalar" | include "unibox.validate.type" -}}
       {{ $name = include "unibox.render" (dict "value" .scope.name "ctx" .ctx "scope" .scope) -}}
     {{- end -}}
-    {{- if and .isFull (or .ctx.Values.nameOverride (ne .ctx.Release.Name (include "unibox.appName" .ctx))) -}}
-      {{- $name = printf "%s-%s" (include "unibox.releaseName" .ctx) $name -}}
+    {{- if and .isFull (or (not (hasKey .ctx.Values "nameOverride")) (ne .ctx.Values.nameOverride "")) (or .ctx.Values.nameOverride (ne .ctx.Release.Name (include "unibox.appName" .ctx))) -}}
+      {{- $releaseName := include "unibox.releaseName" .ctx -}}
+      {{- if $releaseName -}}
+        {{- $name = printf "%s-%s" $releaseName $name -}}
+      {{- end -}}
     {{- end -}}
     {{- $name | trunc 63 | trimSuffix "-" -}}
   {{- end -}}
@@ -103,19 +106,17 @@
     {{- end -}}
   {{- end -}}
   {{- $labelsKey := default "labels" .labelsKey -}}
-  {{- if (hasKey .scope $labelsKey) -}}
-    {{- $labelsCustom := get .scope $labelsKey -}}
-    {{- if not (kindIs "map" $labelsCustom) -}}
-      {{- kindOf $labelsCustom | replace "invalid" "null" | printf "Custom labels (field .%s) is expected to be an object, but its type is '%s'" $labelsKey | fail -}}
-    {{- end -}}
+  {{- if (list .scope $labelsKey "map" | include "unibox.validate.type") -}}
     {{- $ctx := .ctx -}}
     {{- $scope := .scope -}}
-    {{- range $k, $v := $labelsCustom -}}
+    {{- $labelsCustom := index .scope $labelsKey -}}
+    {{- $_ := list .scope $labelsKey | include "unibox.getPath" | set $labelsCustom "__path__" -}}
+    {{- range $k, $v := omit $labelsCustom "__path__" -}}
       {{- if (list "app.kubernetes.io/instance" "app.kubernetes.io/managed-by" "app.kubernetes.io/component" | has $k) -}}
         {{- /* Fail only if standard list of labels contains the key. This will allow
         to define 'app.kubernetes.io/component' if it is not defined yet */ -}}
         {{- if (hasKey $labels $k) -}}
-          {{- printf "Custom label with name '%s' is not allowed" $k | fail -}}
+          {{- list $labelsCustom $k "this custom label name is not allowed" | include "unibox.fail" -}}
         {{- end -}}
       {{- end -}}
       {{- $_ := include "unibox.render" (dict "value" $v "ctx" $ctx "scope" $scope) | set $labels $k -}}
@@ -151,15 +152,13 @@
 
 {{- define "unibox.annotations" -}}
   {{- $annotationsKey := default "annotations" .annotationsKey -}}
-  {{- if (hasKey .scope $annotationsKey) -}}
-    {{- $annotations := get .scope $annotationsKey -}}
-    {{- if not (kindIs "map" $annotations) -}}
-      {{- kindOf $annotations | replace "invalid" "null" | printf "Custom annotations (field .%s) is expected to be an object, but its type is '%s'" $annotationsKey | fail -}}
-    {{- end -}}
+  {{- if (list .scope $annotationsKey "map" | include "unibox.validate.type") -}}
+    {{- $annotations := index .scope $annotationsKey -}}
+    {{- $_ := list .scope $annotationsKey | include "unibox.getPath" | set $annotations "__path__" -}}
     {{- print "\nannotations:" -}}
     {{- $ctx := .ctx -}}
     {{- $scope := .scope -}}
-    {{- range $k, $v := $annotations -}}
+    {{- range $k, $v := omit $annotations "__path__" -}}
       {{- include "unibox.render" (dict "value" $v "ctx" $ctx "scope" $scope) | quote | printf "%s: %s" (quote $k) | nindent 2 -}}
     {{- end -}}
   {{- end -}}
@@ -209,7 +208,11 @@
   {{- $key := index . 1 -}}
   {{- $parentKey := get $scope "__path__" -}}
   {{- if and $parentKey (not (eq $parentKey ".")) -}}
-    {{- printf "%s.%s" $parentKey $key -}}
+    {{- if contains "." $key -}}
+      {{- printf "%s[\"%s\"]" $parentKey $key -}}
+    {{- else -}}
+      {{- printf "%s.%s" $parentKey $key -}}
+    {{- end -}}
   {{- else -}}
     {{- printf ".%s" $key -}}
   {{- end -}}
@@ -351,6 +354,7 @@
   {{- $pluralKey := hasKey . "pluralKey" | ternary .pluralKey (printf "%ss" .singleKey) -}}
   {{- $isEntryMap := hasKey . "isEntryMap" | ternary .isEntryMap true -}}
   {{- $validateMap := default false .validateMap -}}
+  {{- $noDefaultNameMessage := .noDefaultNameMessage -}}
 
   {{- if and $pluralKey (list $scope $pluralKey "map" | include "unibox.validate.type") -}}
     {{- $entitiesRaw := index $scope $pluralKey -}}
@@ -364,7 +368,9 @@
         {{- end -}}
         {{- $_ = list $entitiesRaw $key | include "unibox.getPath" | set . "__path__" -}}
         {{- $name = dict "isFull" false "name" $key "ctx" $ctx "scope" . | include "unibox.name" -}}
-        {{- if (hasKey $entities $name) -}}
+        {{- if not $name -}}
+          {{- list $entitiesRaw $key $noDefaultNameMessage | include "unibox.fail" -}}
+        {{- else if (hasKey $entities $name) -}}
           {{- $name | printf "duplicated name '%s'" | list $entitiesRaw $key | include "unibox.fail" -}}
         {{- end -}}
       {{- end -}}
@@ -384,7 +390,7 @@
       {{- $_ := list $scope .singleKey | include "unibox.getPath" | set $entity "__path__" -}}
       {{- $name := dict "isFull" false "name" .defaultName "ctx" $ctx "scope" $entity | include "unibox.name" -}}
       {{- if not $name -}}
-        {{- .noDefaultNameMessage | list $scope .singleKey | include "unibox.fail" -}}
+        {{- list $scope .singleKey $noDefaultNameMessage | include "unibox.fail" -}}
       {{- else if (hasKey $entities $name) -}}
         {{- $name | printf "duplicated name '%s'" | list $scope .singleKey | include "unibox.fail" -}}
       {{- end -}}
@@ -393,9 +399,10 @@
   {{- end -}}
 
   {{- $callback := .callback -}}
+  {{- $callbackArgs := default dict .callbackArgs -}}
   {{- $asArray := default false .asArray -}}
   {{- range $name, $_ := $entities -}}
-    {{- $args := dict "name" $name "ctx" $ctx "scope" .scope "scopeLocal" $scope "scopeParent" .scopeParent -}}
+    {{- $args := merge (dict "name" $name "ctx" $ctx "scope" .scope "scopeLocal" $scope "scopeParent" .scopeParent) $callbackArgs -}}
     {{- if $asArray -}}
       {{- include $callback $args | indent 2 | trim | printf "\n- %s" -}}
     {{- else -}}

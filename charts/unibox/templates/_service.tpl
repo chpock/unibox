@@ -4,7 +4,9 @@
   {{- include "unibox.foreach" (dict
     "singleKey" "service"
     "defaultName" .name
+    "noDefaultNameMessage" "an empty name was specified in the .name or nameOverride fields for this service"
     "callback" "unibox.service"
+    "callbackArgs" (dict "nameParent" .name)
     "validateMap" "service"
     "ctx" .ctx "scope" .scope
   ) -}}
@@ -27,6 +29,14 @@
     "isNamespaced" true
     "ctx" .ctx "scope" .scope
   ) -}}
+
+  {{- print "\nspec:" -}}
+
+  {{- include "unibox.selector" (dict
+    "labelsKey" "podLabels"
+    "component" .nameParent
+    "ctx" .ctx "scope" .scopeParent
+  ) | indent 2 -}}
 
 {{- end -}}
 

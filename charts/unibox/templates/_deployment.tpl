@@ -21,16 +21,16 @@
 
   {{- print "\nspec:" -}}
 
-  {{- if (list .scope "updateStrategy" "map" | include "unibox.validate.type") -}}
-    {{- print "strategy:" | nindent 2 -}}
-    {{- include "unibox.render" (dict "value" .scope.updateStrategy "ctx" .ctx "scope" .scope) | nindent 4 -}}
-  {{- end -}}
-
   {{- include "unibox.selector" (dict
     "labelsKey" "podLabels"
     "component" .name
     "ctx" .ctx "scope" .scope
   ) | indent 2 -}}
+
+  {{- if (list .scope "updateStrategy" "map" | include "unibox.validate.type") -}}
+    {{- print "strategy:" | nindent 2 -}}
+    {{- include "unibox.render" (dict "value" .scope.updateStrategy "ctx" .ctx "scope" .scope) | nindent 4 -}}
+  {{- end -}}
 
   {{- include "unibox.podTemplate" (dict
     "labelsKey" "podLabels"
