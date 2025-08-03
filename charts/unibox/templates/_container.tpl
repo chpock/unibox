@@ -238,6 +238,6 @@
 
 {{- define "unibox.container.ports.entry" -}}
   {{- quote .name | printf "name: %s" -}}
-  {{- include "unibox.render.integer" (dict "scope" .scopeParent "key" .name "ctx" .ctx "scopeLocal" .scopeLocal) | atoi | printf "\ncontainerPort: %d" -}}
+  {{- dict "scope" .scopeParent "key" .name "ctx" .ctx "scopeLocal" .scopeLocal | include "unibox.render.integer" | atoi | printf "\ncontainerPort: %d" -}}
   {{- printf "\nprotocol: TCP" -}}
 {{- end -}}

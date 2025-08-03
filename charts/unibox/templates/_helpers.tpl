@@ -62,6 +62,19 @@
   {{- $result -}}
 {{- end -}}
 
+{{- define "unibox.render.enum" -}}
+  {{ $value := "" -}}
+  {{- if (list .scope .key "string" | include "unibox.validate.type") -}}
+    {{- $value = default .scope .scopeLocal | dict "value" (index .scope .key) "ctx" .ctx "scope" | include "unibox.render" -}}
+    {{- if not (has $value .list) -}}
+      {{- last .list | printf "'%s' or '%s'" (initial .list | join "', '") | printf "the key value is specified as '%s', but one of the following values is expected: %s" $value | list .scope .key "" | include "unibox.fail" -}}
+    {{- end -}}
+  {{- else -}}
+    {{ $value = .default }}
+  {{- end -}}
+  {{- $value -}}
+{{- end -}}
+
 {{- define "unibox.name" -}}
   {{- if list .scope "nameOverride" "scalar" | include "unibox.validate.type" -}}
     {{- if (hasKey .scope "name") -}}
@@ -413,6 +426,15 @@
 {{- end -}}
 
 {{- define "unibox.getAllowedKeys" -}}
+  {{- $serviceCommonKeys := list
+      "props" "properties"
+      "enabled"
+      "name" "nameOverride"
+      "annotations"
+      "labels"
+      "type"
+      "ports"
+  -}}
   {{- index (dict
     "root" (list
       "app" "global"
@@ -466,13 +488,10 @@
     "container.env.field" (list
       "secret" "configMap" "resourceField" "field"
     )
-    "service" (list
-      "props" "properties"
-      "enabled"
-      "name" "nameOverride"
-      "annotations"
-      "labels"
-    )
+    "service.ClusterIP" $serviceCommonKeys
+    "service.ExternalName" $serviceCommonKeys
+    "service.LoadBalancer" $serviceCommonKeys
+    "service.NodePort" $serviceCommonKeys
   ) . | toJson -}}
 {{- end -}}
 
