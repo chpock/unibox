@@ -6,14 +6,12 @@
   {{- end -}}
 
   {{- template "unibox.document" (dict
-    "apiVersion" (include "unibox.capabilities.deployment.apiVersion" $)
+    "apiVersion" (include "unibox.capabilities.deployment.apiVersion" .ctx)
     "kind" "Deployment"
   ) -}}
 
-  {{- $nameFull := include "unibox.name" (dict "isFull" true "name" .name "ctx" .ctx "scope" .scope) -}}
-
   {{- template "unibox.metadata" (dict
-    "name" $nameFull
+    "name" .nameFull
     "component" .name
     "isNamespaced" true
     "ctx" .ctx "scope" .scope
@@ -26,6 +24,12 @@
     "component" .name
     "ctx" .ctx "scope" .scope
   ) | indent 2 -}}
+
+  {{- $replicas := 1 -}}
+  {{- if (hasKey .scope "replicas") -}}
+    {{- $replicas = dict "scope" .scope "key" "replicas" "ctx" .ctx | include "unibox.render.integer" | atoi -}}
+  {{- end -}}
+  {{- printf "replicas: %d" $replicas | nindent 2 -}}
 
   {{- if (list .scope "updateStrategy" "map" | include "unibox.validate.type") -}}
     {{- print "strategy:" | nindent 2 -}}

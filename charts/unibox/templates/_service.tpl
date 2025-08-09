@@ -3,10 +3,9 @@
 
   {{- include "unibox.foreach" (dict
     "singleKey" "service"
-    "defaultName" .name
-    "noDefaultNameMessage" "an empty name was specified in the .name or nameOverride fields for this service"
+    "prefixName" .name
     "callback" "unibox.service"
-    "callbackArgs" (dict "nameOwner" .name "scopeOwner" .scope)
+    "callbackArgs" (dict "nameComponent" .name "scopeComponent" .scope)
     "ctx" .ctx "scope" .scope
   ) -}}
 
@@ -16,15 +15,13 @@
 {{- define "unibox.service" -}}
 
   {{- template "unibox.document" (dict
-    "apiVersion" (include "unibox.capabilities.service.apiVersion" $)
+    "apiVersion" (include "unibox.capabilities.service.apiVersion" .ctx)
     "kind" "Service"
   ) -}}
 
-  {{- $nameFull := include "unibox.name" (dict "isFull" true "name" .name "ctx" .ctx "scope" .scope) -}}
-
   {{- template "unibox.metadata" (dict
-    "name" $nameFull
-    "component" .name
+    "name" .nameFull
+    "component" .nameComponent
     "isNamespaced" true
     "ctx" .ctx "scope" .scope
   ) -}}
@@ -33,8 +30,8 @@
 
   {{- include "unibox.selector" (dict
     "labelsKey" "podLabels"
-    "component" .nameOwner
-    "ctx" .ctx "scope" .scopeOwner
+    "component" .nameComponent
+    "ctx" .ctx "scope" .scopeComponent
   ) | indent 2 -}}
 
   {{- $type := list "ClusterIP" "ExternalName" "LoadBalancer" "NodePort"
@@ -66,10 +63,25 @@
   {{- end -}}
 {{- end -}}
 
+{{- define "unibox.service.getPorts" -}}
+    {{- include "unibox.foreach" (dict
+      "singleKey" false
+      "pluralKey" "ports"
+      "callback" "unibox.service.getPorts.callback"
+      "asArray" true
+      "isEntryMap" false
+      "ctx" .ctx "scope" .scope
+    ) -}}
+{{- end -}}
+
 {{- define "unibox.service.ports.entry" -}}
   {{- /* TODO: here we should validate whether uplevel deployment/statefulset has any container with current port name. */ -}}
   {{- quote .name | printf "name: %s" -}}
   {{- dict "scope" .scopeParent "key" .name "ctx" .ctx "scopeLocal" .scopeLocal | include "unibox.render.integer" | atoi | printf "\nport: %d" -}}
   {{- printf "\nprotocol: TCP" -}}
   {{- quote .name | printf "\ntargetPort: %s" -}}
+{{- end -}}
+
+{{- define "unibox.service.getPorts.callback" -}}
+  {{- quote .name -}}
 {{- end -}}

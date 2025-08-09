@@ -12,16 +12,14 @@
 
   {{- $image := "" -}}
   {{- $registry := "" -}}
-  {{- $imagePullPolicy := "" -}}
 
   {{- if (list .ctx.Values "imageRegistry" "scalar" | include "unibox.validate.global.type") -}}
      {{- $registry = .ctx.Values.global.imageRegistry | toString -}}
   {{- end -}}
 
-  {{- if (list .scope "imagePullPolicy" "string" | include "unibox.validate.type") -}}
-    {{- /* TODO: add validation here for imagePullPolicy, since it can only be a value from a specific value set of values */ -}}
-    {{- $imagePullPolicy = include "unibox.render" (dict "value" .scope.imagePullPolicy "ctx" .ctx "scope" .scope) -}}
-  {{- end -}}
+  {{- $imagePullPolicy := list "IfNotPresent" "Always" "Never"
+      | dict "scope" .scope "key" "imagePullPolicy" "ctx" .ctx "default" "IfNotPresent" "list"
+      | include "unibox.render.enum" -}}
 
   {{- if not (list .scope "image" "!slice" | include "unibox.validate.type") -}}
     {{- list .scope "there is no image defined in the container, please define the image in this container using the .image field" | include "unibox.fail" -}}
@@ -60,12 +58,13 @@
         {{- $registry = include "unibox.render" (dict "value" .scope.image.registry "ctx" .ctx "scope" .scope) -}}
       {{- end -}}
 
-      {{- if (list .scope.image "pullPolicy" "string" | include "unibox.validate.type") -}}
-        {{- /* TODO: add validation here for imagePullPolicy, since it can only be a value from a specific value set of values */ -}}
-        {{- if $imagePullPolicy -}}
+      {{- if (hasKey .scope.image "pullPolicy") -}}
+        {{- if (hasKey .scope "imagePullPolicy") -}}
           {{- list .scope.image "pullPolicy" "the image pull policy for the image in this container is already defined by the .imagePullPolicy field, only one image pull policy can be specified" | include "unibox.fail" -}}
         {{- end -}}
-        {{- $imagePullPolicy = include "unibox.render" (dict "value" .scope.image.pullPolicy "ctx" .ctx "scope" .scope) -}}
+        {{- $imagePullPolicy = list "IfNotPresent" "Always" "Never"
+            | dict "scope" .scope.image "key" "pullPolicy" "ctx" .ctx "scopeLocal" .scope "default" "IfNotPresent" "list"
+            | include "unibox.render.enum" -}}
       {{- end -}}
 
     {{- end -}}

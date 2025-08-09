@@ -50,7 +50,7 @@
       {{- $result = int64 $rounded -}}
     {{- end -}}
   {{- else if (kindIs "string" $value) -}}
-    {{- $value = include "unibox.render" (dict "value" $value "ctx" .ctx "scope" .scopeLocal) -}}
+    {{- $value = default .scope .scopeLocal | dict "value" $value "ctx" .ctx "scope" | include "unibox.render" -}}
     {{- if (regexMatch "^\\d+$" $value) -}}
       {{- $result = $value -}}
     {{- end -}}
@@ -63,7 +63,7 @@
 {{- end -}}
 
 {{- define "unibox.render.enum" -}}
-  {{ $value := "" -}}
+  {{- $value := "" -}}
   {{- if (list .scope .key "string" | include "unibox.validate.type") -}}
     {{- $value = default .scope .scopeLocal | dict "value" (index .scope .key) "ctx" .ctx "scope" | include "unibox.render" -}}
     {{- if not (has $value .list) -}}
@@ -76,6 +76,7 @@
 {{- end -}}
 
 {{- define "unibox.name" -}}
+  {{- $name := .defaultName -}}
   {{- if list .scope "nameOverride" "scalar" | include "unibox.validate.type" -}}
     {{- if (hasKey .scope "name") -}}
       {{- (printf "both keys %s (value: '%s') and %s (value: '%s') are specified, only one of these keys is allowed to be specified"
@@ -85,20 +86,33 @@
         .scope.nameOverride
       ) | fail -}}
     {{- end -}}
-    {{- template "unibox.render" (dict "value" .scope.nameOverride "ctx" .ctx "scope" .scope) -}}
+    {{- $name = include "unibox.render" (dict "value" .scope.nameOverride "ctx" .ctx "scope" .scope) -}}
+    {{- if not $name -}}
+      {{- list .scope "nameOverride" "an empty name is not allowed" | include "unibox.fail" -}}
+    {{- end -}}
+    {{- if .prefixName -}}
+      {{- $name = printf "%s-%s" .prefixName $name -}}
+    {{- end -}}
   {{- else -}}
-    {{- $name := .name -}}
     {{- if list .scope "name" "scalar" | include "unibox.validate.type" -}}
       {{ $name = include "unibox.render" (dict "value" .scope.name "ctx" .ctx "scope" .scope) -}}
-    {{- end -}}
-    {{- if and .isFull (or (not (hasKey .ctx.Values "nameOverride")) (ne .ctx.Values.nameOverride "")) (or .ctx.Values.nameOverride (ne .ctx.Release.Name (include "unibox.appName" .ctx))) -}}
-      {{- $releaseName := include "unibox.releaseName" .ctx -}}
-      {{- if $releaseName -}}
-        {{- $name = printf "%s-%s" $releaseName $name -}}
+      {{- if not $name -}}
+        {{- list .scope "name" "an empty name is not allowed" | include "unibox.fail" -}}
       {{- end -}}
     {{- end -}}
-    {{- $name | trunc 63 | trimSuffix "-" -}}
+    {{- if .prefixName -}}
+      {{- if $name -}}
+        {{- $name = printf "%s-%s" .prefixName $name -}}
+      {{- else -}}
+        {{- $name = .prefixName -}}
+      {{- end -}}
+    {{- end -}}
+    {{- /* if eq $name "custom-name" -}}
+      {{- include "unibox.dump" (dict "name" $name "root" .) -}}
+    {{- end */ -}}
   {{- end -}}
+  {{- /* TODO: do not use 'trunc 63' here, but check and thow an error if $name has more than 63 characters. */ -}}
+  {{- $name | trunc 63 | trimSuffix "-" -}}
 {{- end -}}
 
 {{- define "unibox.labels.raw" -}}
@@ -363,11 +377,14 @@
   {{- $scope := .scope -}}
   {{- $ctx := .ctx -}}
   {{- $defaultDisabled := .defaultDisabled -}}
-  {{- $isFullName := .isFullName -}}
   {{- $pluralKey := hasKey . "pluralKey" | ternary .pluralKey (printf "%ss" .singleKey) -}}
   {{- $isEntryMap := hasKey . "isEntryMap" | ternary .isEntryMap true -}}
   {{- $validateMap := default false .validateMap -}}
   {{- $noDefaultNameMessage := .noDefaultNameMessage -}}
+  {{- $prefixName := .prefixName -}}
+  {{- $releaseName := include "unibox.releaseName" .ctx -}}
+  {{- $appName := include "unibox.appName" .ctx -}}
+  {{- $nameFullRequired := and $isEntryMap $releaseName (or (not (hasKey .ctx.Values "nameOverride")) (ne .ctx.Values.nameOverride "")) (or .ctx.Values.nameOverride (ne .ctx.Release.Name $appName)) | not | not -}}
 
   {{- if and $pluralKey (list $scope $pluralKey "map" | include "unibox.validate.type") -}}
     {{- $entitiesRaw := index $scope $pluralKey -}}
@@ -380,7 +397,7 @@
           {{- continue -}}
         {{- end -}}
         {{- $_ = list $entitiesRaw $key | include "unibox.getPath" | set . "__path__" -}}
-        {{- $name = dict "isFull" false "name" $key "ctx" $ctx "scope" . | include "unibox.name" -}}
+        {{- $name = dict "defaultName" $key "ctx" $ctx "scope" . "prefixName" $prefixName | include "unibox.name" -}}
         {{- if not $name -}}
           {{- list $entitiesRaw $key $noDefaultNameMessage | include "unibox.fail" -}}
         {{- else if (hasKey $entities $name) -}}
@@ -390,7 +407,11 @@
       {{- if and $isEntryMap $validateMap -}}
         {{- template "unibox.validate.map" (list $entitiesRaw $key $validateMap) -}}
       {{- end -}}
-      {{- $_ = set $entities $name (dict "scopeParent" $entitiesRaw "scope" .) -}}
+      {{- $nameFull := $name -}}
+      {{- if and $nameFullRequired (not (hasKey . "nameOverride")) -}}
+        {{- $nameFull = printf "%s-%s" $releaseName $nameFull -}}
+      {{- end -}}
+      {{- $_ = dict "scopeParent" $entitiesRaw "scope" . "nameFull" $nameFull | set $entities $name -}}
     {{- end -}}
   {{- end -}}
 
@@ -401,13 +422,17 @@
         {{- template "unibox.validate.map" (list $scope .singleKey $validateMap) -}}
       {{- end -}}
       {{- $_ := list $scope .singleKey | include "unibox.getPath" | set $entity "__path__" -}}
-      {{- $name := dict "isFull" false "name" .defaultName "ctx" $ctx "scope" $entity | include "unibox.name" -}}
+      {{- $name := dict "defaultName" .defaultName "ctx" $ctx "scope" $entity "prefixName" $prefixName | include "unibox.name" -}}
       {{- if not $name -}}
         {{- list $scope .singleKey $noDefaultNameMessage | include "unibox.fail" -}}
       {{- else if (hasKey $entities $name) -}}
         {{- $name | printf "duplicated name '%s'" | list $scope .singleKey | include "unibox.fail" -}}
       {{- end -}}
-      {{- $_ = set $entities $name (dict "scopeParent" $entity "scope" $entity) -}}
+      {{- $nameFull := $name -}}
+      {{- if and $nameFullRequired (not (hasKey $entity "nameOverride")) -}}
+        {{- $nameFull = printf "%s-%s" $releaseName $nameFull -}}
+      {{- end -}}
+      {{- $_ = dict "scopeParent" $entity "scope" $entity "nameFull" $nameFull | set $entities $name -}}
     {{- end -}}
   {{- end -}}
 
@@ -415,7 +440,7 @@
   {{- $callbackArgs := default dict .callbackArgs -}}
   {{- $asArray := default false .asArray -}}
   {{- range $name, $_ := $entities -}}
-    {{- $args := merge (dict "name" $name "ctx" $ctx "scope" .scope "scopeLocal" $scope "scopeParent" .scopeParent) $callbackArgs -}}
+    {{- $args := merge (dict "name" $name "ctx" $ctx "scope" .scope "scopeLocal" $scope "scopeParent" .scopeParent "nameFull" .nameFull) $callbackArgs -}}
     {{- if $asArray -}}
       {{- include $callback $args | indent 2 | trim | printf "\n- %s" -}}
     {{- else -}}
@@ -434,6 +459,7 @@
       "labels"
       "type"
       "ports"
+      "ingress"
   -}}
   {{- index (dict
     "root" (list
@@ -451,6 +477,7 @@
       "updateStrategy"
       "annotations" "podAnnotations"
       "labels" "podLabels"
+      "replicas"
     )
     "container" (list
       "props" "properties"
@@ -492,6 +519,18 @@
     "service.ExternalName" $serviceCommonKeys
     "service.LoadBalancer" $serviceCommonKeys
     "service.NodePort" $serviceCommonKeys
+    "ingress" (list
+      "props" "properties"
+      "enabled"
+      "name" "nameOverride"
+      "annotations"
+      "labels"
+      "class"
+      "host"
+      "path"
+      "pathType"
+      "port"
+    )
   ) . | toJson -}}
 {{- end -}}
 

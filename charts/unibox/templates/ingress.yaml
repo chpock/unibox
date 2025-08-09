@@ -1,0 +1,9 @@
+{{- template "unibox.validateAll" .Values -}}
+
+{{- include "unibox.foreach" (dict
+  "singleKey" "deployment"
+  "defaultName" (include "unibox.appName" .)
+  "noDefaultNameMessage" "single deployment requires a non-empty name specified by .deployment.name, .deployment.nameOverride, or the application name set by the .app.name key"
+  "callback" "unibox.deployment.service.ingress"
+  "ctx" $ "scope" .Values
+) -}}

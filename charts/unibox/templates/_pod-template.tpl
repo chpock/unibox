@@ -10,7 +10,6 @@
   {{- include "unibox.foreach" (dict
     "singleKey" "container"
     "defaultName" .component
-    "noDefaultNameMessage" "an empty name was specified in the .name field for this container"
     "callback" "unibox.container"
     "asArray" true
     "validateMap" "container"
