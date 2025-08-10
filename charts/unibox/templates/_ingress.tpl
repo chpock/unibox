@@ -4,9 +4,9 @@
   {{- include "unibox.foreach" (dict
     "singleKey" "service"
     "prefixName" .name
-    "noDefaultNameMessage" "an empty name was specified in the .name or nameOverride fields for this service"
     "callback" "unibox.service.ingress"
     "callbackArgs" (dict "nameComponent" .name "scopeComponent" .scope)
+    "asArray" true
     "ctx" .ctx "scope" .scope
   ) -}}
 
@@ -19,7 +19,6 @@
     "pluralKey" false
     "validateMap" "ingress"
     "prefixName" .name
-    "noDefaultNameMessage" "an empty name was specified in the .name or nameOverride fields for this ingress"
     "callback" "unibox.ingress"
     "callbackArgs" (dict "nameComponent" .nameComponent "scopeComponent" .scopeComponent "nameService" .name "scopeService" .scope "nameServiceFull" .nameFull)
     "ctx" .ctx "scope" .scope
@@ -29,22 +28,23 @@
 
 {{- define "unibox.ingress" -}}
 
-  {{- template "unibox.document" (dict
+  {{- $document := include "unibox.document" (dict
     "apiVersion" (include "unibox.capabilities.ingress.apiVersion" .ctx)
     "kind" "Ingress"
-  ) -}}
+  ) | fromJson -}}
 
-  {{- template "unibox.metadata" (dict
+  {{- $_ := include "unibox.metadata" (dict
     "name" .nameFull
     "component" .nameComponent
     "isNamespaced" true
     "ctx" .ctx "scope" .scope
-  ) -}}
+  ) | fromJson | merge $document -}}
 
-  {{- print "\nspec:" -}}
+  {{- $spec := dict -}}
 
   {{- if (list .scope "class" "scalar" | include "unibox.validate.type") -}}
-    {{- dict "value" .scope.class "ctx" .ctx "scope" .scope | include "unibox.render" | quote | printf "ingressClassName: %s" | nindent 2 -}}
+    {{- $class := dict "value" .scope.class "ctx" .ctx "scope" .scope | include "unibox.render" -}}
+    {{- $_ := set $spec "ingressClassName" $class -}}
   {{- end -}}
 
   {{- $path := "/" -}}
@@ -66,9 +66,11 @@
     {{- "the port is defined, but host for this ingress is not defined by the .host field" | list .scope "port" | include "unibox.fail" -}}
   {{- end -}}
 
+  {{- $rules := list -}}
+
   {{- if (list .scope "host" "scalar" | include "unibox.validate.type") -}}
 
-    {{- $servicePorts := include "unibox.service.getPorts" (dict "ctx" .ctx "scope" .scopeService) | trim | fromYamlArray -}}
+    {{- $servicePorts := include "unibox.service.getPorts" (dict "ctx" .ctx "scope" .scopeService) | fromJsonArray -}}
 
     {{- $host := dict "value" .scope.host "ctx" .ctx "scope" .scope | include "unibox.render" -}}
     {{- $port := "http" -}}
@@ -91,10 +93,17 @@
       {{- end }}
     {{- end -}}
 
-    {{- print "rules:" | nindent 2 -}}
-    {{- dict "host" $host "port" $port "path" $path "pathType" $pathType "nameServiceFull" .nameServiceFull | include "unibox.ingress.rules.entry" | indent 2 | trim | printf "- %s" | nindent 2 -}}
+    {{- $rules = dict "host" $host "port" $port "path" $path "pathType" $pathType "nameServiceFull" .nameServiceFull | include "unibox.ingress.rules.entry" | fromJson | append $rules -}}
 
   {{- end -}}
+
+  {{- if $rules -}}
+    {{- $_ := set $spec "rules" $rules -}}
+  {{- end -}}
+
+  {{- $_ := set $document "spec" $spec -}}
+
+  {{- toJson $document -}}
 
 {{- end -}}
 
@@ -116,5 +125,5 @@
           )
         )
       )
-    ) | toYaml -}}
+    ) | toJson -}}
 {{- end -}}

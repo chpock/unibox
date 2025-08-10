@@ -27,14 +27,14 @@
     {{- printf "%v" .value -}}
   {{- else -}}
     {{- $value := typeIs "string" .value | ternary .value (.value | toYaml) -}}
-    {{- if contains "{{" (toJson .value) }}
+    {{- if contains "{{" (toJson .value) -}}
       {{- if .scope -}}
-        {{- tpl $value (merge (dict "Scope" .scope) .ctx) }}
+        {{- tpl $value (merge (dict "Scope" .scope) .ctx) -}}
       {{- else -}}
-        {{- tpl $value .ctx }}
+        {{- tpl $value .ctx -}}
       {{- end -}}
     {{- else -}}
-      {{- $value }}
+      {{- $value -}}
     {{- end -}}
   {{- end -}}
 {{- end -}}
@@ -70,7 +70,7 @@
       {{- last .list | printf "'%s' or '%s'" (initial .list | join "', '") | printf "the key value is specified as '%s', but one of the following values is expected: %s" $value | list .scope .key "" | include "unibox.fail" -}}
     {{- end -}}
   {{- else -}}
-    {{ $value = .default }}
+    {{- $value = .default -}}
   {{- end -}}
   {{- $value -}}
 {{- end -}}
@@ -107,15 +107,12 @@
         {{- $name = .prefixName -}}
       {{- end -}}
     {{- end -}}
-    {{- /* if eq $name "custom-name" -}}
-      {{- include "unibox.dump" (dict "name" $name "root" .) -}}
-    {{- end */ -}}
   {{- end -}}
   {{- /* TODO: do not use 'trunc 63' here, but check and thow an error if $name has more than 63 characters. */ -}}
   {{- $name | trunc 63 | trimSuffix "-" -}}
 {{- end -}}
 
-{{- define "unibox.labels.raw" -}}
+{{- define "unibox.labels" -}}
   {{- $labels := dict
     "helm.sh/chart" (include "unibox.chartName" .ctx)
     "app.kubernetes.io/instance" .ctx.Release.Name
@@ -128,7 +125,7 @@
     {{- if (get .ctx.Values.app "name") -}}
       {{- $_ := set $labels "app.kubernetes.io/name" (include "unibox.appName" .ctx) -}}
     {{- end -}}
-    {{- if (get .ctx.Values.app "version") }}
+    {{- if (get .ctx.Values.app "version") -}}
       {{- $_ := set $labels "app.kubernetes.io/version" (include "unibox.appVersion" .ctx) -}}
     {{- end -}}
   {{- end -}}
@@ -152,59 +149,57 @@
   {{- $labels | toJson -}}
 {{- end -}}
 
-{{- define "unibox.labels" -}}
-  {{- print "\nlabels:" -}}
-  {{- range $k, $v := include "unibox.labels.raw" . | fromJson -}}
-    {{- printf "%s: %s" (quote $k) (quote $v) | nindent 2 -}}
+{{- define "unibox.annotations" -}}
+  {{- $annotations := dict -}}
+  {{- $annotationsKey := default "annotations" .annotationsKey -}}
+  {{- if (list .scope $annotationsKey "map" | include "unibox.validate.type") -}}
+    {{- $ctx := .ctx -}}
+    {{- $scope := .scope -}}
+    {{- range $k, $v :=  index .scope $annotationsKey -}}
+      {{- $_ := dict "value" $v "ctx" $ctx "scope" $scope | include "unibox.render" | set $annotations $k -}}
+    {{- end -}}
   {{- end -}}
+  {{- $annotations | toJson -}}
+{{- end -}}
+
+{{- define "unibox.metadata" -}}
+    {{- $metadata := dict -}}
+    {{- if .name -}}
+      {{- $_ := set $metadata "name" .name -}}
+    {{- end -}}
+    {{- if .isNamespaced -}}
+      {{- $_ := set $metadata "namespace" .ctx.Release.Namespace -}}
+    {{- end -}}
+    {{- with include "unibox.labels" . | fromJson -}}
+      {{- $_ := set $metadata "labels" . -}}
+    {{- end -}}
+    {{- with include "unibox.annotations" . | fromJson -}}
+      {{- $_ := set $metadata "annotations" . -}}
+    {{- end -}}
+    {{- dict "metadata" $metadata | toJson -}}
 {{- end -}}
 
 {{- define "unibox.selector" -}}
   {{- $selectLabels := list "app.kubernetes.io/instance" "app.kubernetes.io/component" "app.kubernetes.io/name" -}}
-  {{- /* get labels now using unibox.labels.raw as it will validate labelsKey and make sure
+  {{- /* get labels now using unibox.labels as it will validate labelsKey and make sure
   it is a map. Below we assume that labelsKey is a valid object and don't perform
   any validation. */ -}}
-  {{- $labels := include "unibox.labels.raw" . | fromJson -}}
+  {{- $labels := include "unibox.labels" . | fromJson -}}
   {{- $labelsKey := default "labels" .labelsKey -}}
   {{- if (hasKey .scope $labelsKey) -}}
     {{- $selectLabels = keys (get .scope $labelsKey) | concat $selectLabels | uniq -}}
   {{- end -}}
-  {{- print "\nselector:\n  matchLabels:" -}}
+  {{- $matchLabels := dict -}}
   {{- range $k, $v := $labels -}}
     {{- if (has $k $selectLabels) -}}
-      {{- printf "%s: %s" (quote $k) (quote $v) | nindent 4 -}}
+      {{- $_ := set $matchLabels $k $v -}}
     {{- end -}}
   {{- end -}}
-{{- end -}}
-
-{{- define "unibox.annotations" -}}
-  {{- $annotationsKey := default "annotations" .annotationsKey -}}
-  {{- if (list .scope $annotationsKey "map" | include "unibox.validate.type") -}}
-    {{- $annotations := index .scope $annotationsKey -}}
-    {{- $_ := list .scope $annotationsKey | include "unibox.getPath" | set $annotations "__path__" -}}
-    {{- print "\nannotations:" -}}
-    {{- $ctx := .ctx -}}
-    {{- $scope := .scope -}}
-    {{- range $k, $v := omit $annotations "__path__" -}}
-      {{- include "unibox.render" (dict "value" $v "ctx" $ctx "scope" $scope) | quote | printf "%s: %s" (quote $k) | nindent 2 -}}
-    {{- end -}}
-  {{- end -}}
-{{- end -}}
-
-{{- define "unibox.metadata" -}}
-    {{- print "metadata:" -}}
-    {{- if .name -}}
-      {{- quote .name | printf "name: %s" | nindent 2 -}}
-    {{- end -}}
-    {{- if .isNamespaced -}}
-      {{- quote .ctx.Release.Namespace | printf "namespace: %s" | nindent 2 -}}
-    {{- end -}}
-    {{- include "unibox.labels" . | indent 2 -}}
-    {{- include "unibox.annotations" . | indent 2 -}}
+  {{- dict "selector" (dict "matchLabels" $matchLabels) | toJson -}}
 {{- end -}}
 
 {{- define "unibox.document" -}}
-    {{- printf "\n---\napiVersion: %s\nkind: %s\n" .apiVersion .kind -}}
+    {{- dict "apiVersion" .apiVersion "kind" .kind | toJson -}}
 {{- end -}}
 
 {{- define "unibox.isScalar" -}}
@@ -358,25 +353,13 @@
   {{- end -}}
 {{- end -}}
 
-{{- define "unibox.validate.scalar" -}}
-{{- end -}}
-
-{{- /*
-    .singleKey
-    .pluralKey
-    .defaultName
-    .noDefaultNameMessage
-    .defaultDisabled
-    .asArray
-    .isEntryMap
-    .callback
-*/ -}}
 {{- define "unibox.foreach" -}}
 
   {{- $entities := dict -}}
   {{- $scope := .scope -}}
   {{- $ctx := .ctx -}}
   {{- $defaultDisabled := .defaultDisabled -}}
+  {{- $singleKey := .singleKey -}}
   {{- $pluralKey := hasKey . "pluralKey" | ternary .pluralKey (printf "%ss" .singleKey) -}}
   {{- $isEntryMap := hasKey . "isEntryMap" | ternary .isEntryMap true -}}
   {{- $validateMap := default false .validateMap -}}
@@ -438,28 +421,89 @@
 
   {{- $callback := .callback -}}
   {{- $callbackArgs := default dict .callbackArgs -}}
-  {{- $asArray := default false .asArray -}}
+  {{- $asDocumentArray := .asDocumentArray -}}
+  {{- $asArray := .asArray -}}
+  {{- $asText := .asText -}}
+  {{- $asJson := and (or $asArray (not .asDocument)) (not $asDocumentArray) (not $asText) -}}
+  {{- $result := list -}}
+  {{- $resultFirst := true -}}
   {{- range $name, $_ := $entities -}}
+
     {{- $args := merge (dict "name" $name "ctx" $ctx "scope" .scope "scopeLocal" $scope "scopeParent" .scopeParent "nameFull" .nameFull) $callbackArgs -}}
-    {{- if $asArray -}}
-      {{- include $callback $args | indent 2 | trim | printf "\n- %s" -}}
-    {{- else -}}
-      {{- include $callback $args -}}
+    {{- $out := include $callback $args -}}
+
+    {{- if or (not $out) (eq $out "[]") -}}
+      {{- continue -}}
     {{- end -}}
+
+    {{- if not $asText -}}
+      {{- if $asDocumentArray -}}
+        {{- $out = fromJsonArray $out -}}
+      {{- else -}}
+        {{- $out = fromJson $out -}}
+      {{- end -}}
+    {{- end -}}
+
+    {{- if $asArray -}}
+      {{- $result = append $result $out -}}
+    {{- else if $asDocumentArray -}}
+      {{- range $out -}}
+        {{- if not $resultFirst -}}
+          {{- print "\n---\n" -}}
+        {{- else -}}
+          {{- $resultFirst = false -}}
+        {{- end -}}
+        {{- . | toYaml -}}
+      {{- end -}}
+    {{- else if not $asJson -}}
+      {{- if not $resultFirst -}}
+        {{- print "\n---\n" -}}
+      {{- end -}}
+      {{- $out | toYaml -}}
+    {{- else if not $resultFirst -}}
+      {{- printf "unibox.foreach: Error: multiple not-JsonArray entries for key '%s/%s' previous '%s' scope: %s" $singleKey $pluralKey $result $scope | fail -}}
+    {{- else -}}
+      {{- $result = $out -}}
+    {{- end -}}
+
+    {{- $resultFirst = false -}}
+
   {{- end -}}
 
+  {{- if or $asJson $asText -}}
+    {{- $result | toJson -}}
+  {{- end -}}
 {{- end -}}
 
 {{- define "unibox.getAllowedKeys" -}}
   {{- $serviceCommonKeys := list
-      "props" "properties"
-      "enabled"
-      "name" "nameOverride"
-      "annotations"
-      "labels"
-      "type"
-      "ports"
-      "ingress"
+    "props" "properties"
+    "enabled"
+    "name" "nameOverride"
+    "annotations"
+    "labels"
+    "type"
+    "ports"
+    "ingress"
+  -}}
+  {{- $containerCommonProbe := list
+    "type"
+    "failureThreshold"
+    "periodSeconds"
+    "timeoutSeconds"
+    "initialDelaySeconds"
+    "terminationGracePeriodSeconds"
+  -}}
+  {{- $containerProbeByProbe := dict
+    "liveness" (list)
+    "startup" (list)
+    "readiness" (list "successThreshold")
+  -}}
+  {{- $containerProbeByType := dict
+    "http" (list "host" "port" "path" "scheme" "headers")
+    "exec" (list "command")
+    "grpc" (list "port" "service")
+    "tcp"  (list "host" "port")
   -}}
   {{- index (dict
     "root" (list
@@ -489,6 +533,7 @@
       "command"
       "args"
       "ports"
+      "probes"
     )
     "container.image" (list
       "repository"
@@ -531,9 +576,45 @@
       "pathType"
       "port"
     )
+    "container.probes" (list
+      "readiness"
+      "startup"
+      "liveness"
+    )
+    "container.probe.liveness.http" (concat $containerCommonProbe (index $containerProbeByProbe "liveness") (index $containerProbeByType "http"))
+    "container.probe.liveness.grpc" (concat $containerCommonProbe (index $containerProbeByProbe "liveness") (index $containerProbeByType "grpc"))
+    "container.probe.liveness.exec" (concat $containerCommonProbe (index $containerProbeByProbe "liveness") (index $containerProbeByType "exec"))
+    "container.probe.liveness.tcp"  (concat $containerCommonProbe (index $containerProbeByProbe "liveness") (index $containerProbeByType "tcp"))
+    "container.probe.startup.http" (concat $containerCommonProbe (index $containerProbeByProbe "startup") (index $containerProbeByType "http"))
+    "container.probe.startup.grpc" (concat $containerCommonProbe (index $containerProbeByProbe "startup") (index $containerProbeByType "grpc"))
+    "container.probe.startup.exec" (concat $containerCommonProbe (index $containerProbeByProbe "startup") (index $containerProbeByType "exec"))
+    "container.probe.startup.tcp"  (concat $containerCommonProbe (index $containerProbeByProbe "startup") (index $containerProbeByType "tcp"))
+    "container.probe.readiness.http" (concat $containerCommonProbe (index $containerProbeByProbe "readiness") (index $containerProbeByType "http"))
+    "container.probe.readiness.grpc" (concat $containerCommonProbe (index $containerProbeByProbe "readiness") (index $containerProbeByType "grpc"))
+    "container.probe.readiness.exec" (concat $containerCommonProbe (index $containerProbeByProbe "readiness") (index $containerProbeByType "exec"))
+    "container.probe.readiness.tcp"  (concat $containerCommonProbe (index $containerProbeByProbe "readiness") (index $containerProbeByType "tcp"))
   ) . | toJson -}}
 {{- end -}}
 
+{{- define "unibox.out" -}}
+  {{- $out := "" -}}
+  {{- $indent := 0 -}}
+  {{- if (kindIs "slice" .) -}}
+    {{- $out = index . (sub (len .) 1) -}}
+    {{- $indent = eq (len .) 1 | ternary $indent (index . 0) -}}
+  {{- else -}}
+    {{- $out = . -}}
+  {{- end -}}
+  {{- if $out -}}
+    {{- if or (kindIs "map" $out) (kindIs "slice" $out) -}}
+      {{- $out = toYaml $out -}}
+    {{- else if not (kindIs "string" $out) -}}
+      {{- printf "unibox.out: unexpected output type '%s' for value '%s'" (kindOf $out) $out | fail -}}
+    {{- end -}}
+    {{- nindent $indent $out -}}
+  {{- end -}}
+{{- end -}}
+
 {{- define "unibox.dump" -}}
-  {{- . | mustToPrettyJson | printf "\nThe JSON output of the dumped var is: \n%s" | fail }}
+  {{- . | mustToPrettyJson | printf "\nThe JSON output of the dumped var is: \n%s" | fail -}}
 {{- end -}}

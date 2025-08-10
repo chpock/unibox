@@ -6,6 +6,7 @@
     "prefixName" .name
     "callback" "unibox.service"
     "callbackArgs" (dict "nameComponent" .name "scopeComponent" .scope)
+    "asArray" true
     "ctx" .ctx "scope" .scope
   ) -}}
 
@@ -14,25 +15,25 @@
 
 {{- define "unibox.service" -}}
 
-  {{- template "unibox.document" (dict
+  {{- $document := include "unibox.document" (dict
     "apiVersion" (include "unibox.capabilities.service.apiVersion" .ctx)
     "kind" "Service"
-  ) -}}
+  ) | fromJson -}}
 
-  {{- template "unibox.metadata" (dict
+  {{- $_ := include "unibox.metadata" (dict
     "name" .nameFull
     "component" .nameComponent
     "isNamespaced" true
     "ctx" .ctx "scope" .scope
-  ) -}}
+  ) | fromJson | merge $document -}}
 
-  {{- print "\nspec:" -}}
+  {{- $spec := dict -}}
 
-  {{- include "unibox.selector" (dict
+  {{- $_ := include "unibox.selector" (dict
     "labelsKey" "podLabels"
     "component" .nameComponent
     "ctx" .ctx "scope" .scopeComponent
-  ) | indent 2 -}}
+  ) | fromJson | merge $spec -}}
 
   {{- $type := list "ClusterIP" "ExternalName" "LoadBalancer" "NodePort"
       | dict "scope" .scope "key" "type" "ctx" .ctx "default" "ClusterIP" "list"
@@ -40,48 +41,57 @@
 
   {{- template "unibox.validate.map" (list .scope (printf "service.%s" $type)) -}}
 
-  {{- quote $type | printf "type: %s" | nindent 2 -}}
+  {{- $_ := set $spec "type" $type -}}
 
-  {{- include "unibox.service.ports" . | indent 2 -}}
+  {{- $_ := include "unibox.service.ports" . | fromJson | merge $spec -}}
+
+  {{- $_ := set $document "spec" $spec -}}
+
+  {{- toJson $document -}}
 
 {{- end -}}
 
 {{- define "unibox.service.ports" -}}
   {{- if (list .scope "ports" "map" | include "unibox.validate.type") -}}
 
-    {{- print "\nports:" -}}
-
-    {{- include "unibox.foreach" (dict
+    {{- $ports := include "unibox.foreach" (dict
       "singleKey" false
       "pluralKey" "ports"
       "callback" "unibox.service.ports.entry"
       "asArray" true
       "isEntryMap" false
       "ctx" .ctx "scope" .scope
-    ) -}}
+    ) | fromJsonArray -}}
 
+    {{- dict "ports" $ports | toJson -}}
+
+  {{- else -}}
+    {{- dict | toJson -}}
   {{- end -}}
 {{- end -}}
 
 {{- define "unibox.service.getPorts" -}}
-    {{- include "unibox.foreach" (dict
-      "singleKey" false
-      "pluralKey" "ports"
-      "callback" "unibox.service.getPorts.callback"
-      "asArray" true
-      "isEntryMap" false
-      "ctx" .ctx "scope" .scope
-    ) -}}
+  {{- include "unibox.foreach" (dict
+    "singleKey" false
+    "pluralKey" "ports"
+    "callback" "unibox.service.getPorts.callback"
+    "asArray" true
+    "asText" true
+    "isEntryMap" false
+    "ctx" .ctx "scope" .scope
+  ) -}}
 {{- end -}}
 
 {{- define "unibox.service.ports.entry" -}}
-  {{- /* TODO: here we should validate whether uplevel deployment/statefulset has any container with current port name. */ -}}
-  {{- quote .name | printf "name: %s" -}}
-  {{- dict "scope" .scopeParent "key" .name "ctx" .ctx "scopeLocal" .scopeLocal | include "unibox.render.integer" | atoi | printf "\nport: %d" -}}
-  {{- printf "\nprotocol: TCP" -}}
-  {{- quote .name | printf "\ntargetPort: %s" -}}
+  {{- /* TODO: here we should validation whether uplevel deployment/statefulset has any container with current port name. */ -}}
+  {{- dict
+    "name" .name
+    "port" (dict "scope" .scopeParent "key" .name "ctx" .ctx "scopeLocal" .scopeLocal | include "unibox.render.integer" | atoi)
+    "protocol" "TCP"
+    "targetPort" .name
+  | toJson -}}
 {{- end -}}
 
 {{- define "unibox.service.getPorts.callback" -}}
-  {{- quote .name -}}
+  {{- .name -}}
 {{- end -}}

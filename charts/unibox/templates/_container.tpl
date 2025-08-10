@@ -1,11 +1,26 @@
 
 {{- define "unibox.container" -}}
-  {{- quote .name | printf "name: %s" -}}
-  {{- template "unibox.container.image" . -}}
-  {{- template "unibox.container.command" . -}}
-  {{- template "unibox.container.args" . -}}
-  {{- template "unibox.container.env" . -}}
-  {{- template "unibox.container.ports" . -}}
+
+  {{- $document := dict "name" .name -}}
+
+  {{- $_ := include "unibox.container.image" . | fromJson | merge $document -}}
+  {{- $_ := include "unibox.container.command" . | fromJson | merge $document -}}
+  {{- $_ := include "unibox.container.args" . | fromJson | merge $document -}}
+  {{- $_ := include "unibox.container.env" . | fromJson | merge $document -}}
+  {{- $_ := include "unibox.container.ports" . | fromJson | merge $document -}}
+
+  {{- if (list .scope "probes" "map" | include "unibox.validate.type") -}}
+    {{- template "unibox.validate.map" (list .scope "probes" "container.probes") -}}
+    {{- $_ := list .scope "probes" | include "unibox.getPath" | set .scope.probes "__path__" -}}
+    {{- $ctx := .ctx -}}
+    {{- $scope := .scope -}}
+    {{- range $key, $scopeProbe := omit .scope.probes "__path__" -}}
+      {{- $_ := list $scope.probes $key "map" | include "unibox.validate.type" -}}
+      {{- $_ := dict "ctx" $ctx "scope" $scopeProbe "key" $key "scopeLocal" $scope "scopeParent" $scope.probes | include "unibox.container.probe" | fromJson | merge $document -}}
+    {{- end -}}
+  {{- end -}}
+
+  {{- toJson $document -}}
 {{- end -}}
 
 {{- define "unibox.container.image" -}}
@@ -75,71 +90,78 @@
     {{- $image = printf "%s/%s" $registry $image -}}
   {{- end -}}
 
-  {{- quote $image | printf "\nimage: %s" -}}
-  {{- if $imagePullPolicy -}}
-    {{- quote $imagePullPolicy | printf "\nimagePullPolicy: %s" -}}
-  {{- end -}}
+  {{- dict "image" $image "imagePullPolicy" $imagePullPolicy | toJson -}}
 
 {{- end -}}
 
 {{- define "unibox.container.command" -}}
   {{- if (list .scope "command" "!map" | include "unibox.validate.type") -}}
 
-    {{- print "\ncommand:" -}}
+    {{- $command := list -}}
 
     {{- if not (kindIs "slice" .scope.command) -}}
-      {{- include "unibox.render" (dict "value" .scope.command "ctx" .ctx "scope" .scope) | quote | printf "\n- %s" -}}
+      {{- $command = include "unibox.render" (dict "value" .scope.command "ctx" .ctx "scope" .scope) | append $command -}}
     {{- else -}}
       {{- $scope := .scope -}}
       {{- $ctx := .ctx -}}
       {{- range until (len .scope.command) -}}
         {{- $_ := list $scope "command" . "scalar" | include "unibox.validate.type" -}}
-        {{- include "unibox.render" (dict "value" (index $scope "command" .) "ctx" $ctx "scope" $scope) | quote | printf "\n- %s" -}}
+        {{- $command = include "unibox.render" (dict "value" (index $scope "command" .) "ctx" $ctx "scope" $scope) | append $command -}}
       {{- end -}}
     {{- end -}}
 
+    {{- dict "command" $command | toJson -}}
+
+  {{- else -}}
+    {{- dict | toJson -}}
   {{- end -}}
 {{- end -}}
 
 {{- define "unibox.container.args" -}}
   {{- if (list .scope "args" "!map" | include "unibox.validate.type") -}}
 
-    {{- print "\nargs:" -}}
+    {{- $args := list -}}
 
     {{- if (kindIs "slice" .scope.args) -}}
       {{- $scope := .scope -}}
       {{- $ctx := .ctx -}}
       {{- range until (len .scope.args) -}}
         {{- $_ := list $scope "args" . "scalar" | include "unibox.validate.type" -}}
-        {{- include "unibox.render" (dict "value" (index $scope "args" .) "ctx" $ctx "scope" $scope) | quote | printf "\n- %s" -}}
+        {{- $args = include "unibox.render" (dict "value" (index $scope "args" .) "ctx" $ctx "scope" $scope) | append $args -}}
       {{- end -}}
     {{- else -}}
-      {{- include "unibox.render" (dict "value" .scope.args "ctx" .ctx "scope" .scope) | quote | printf "\n- %s" -}}
+      {{- $args = include "unibox.render" (dict "value" .scope.args "ctx" .ctx "scope" .scope) | append $args -}}
     {{- end -}}
 
+    {{- dict "args" $args | toJson -}}
+
+  {{- else -}}
+    {{- dict | toJson -}}
   {{- end -}}
 {{- end -}}
 
 {{- define "unibox.container.env" -}}
   {{- if (list .scope "env" "map" | include "unibox.validate.type") -}}
 
-    {{- print "\nenv:" -}}
-
-    {{- include "unibox.foreach" (dict
+    {{- $env := include "unibox.foreach" (dict
       "singleKey" false
       "pluralKey" "env"
       "callback" "unibox.container.env.entry"
       "asArray" true
       "isEntryMap" false
       "ctx" .ctx "scope" .scope
-    ) -}}
+    ) | fromJsonArray -}}
 
+    {{- dict "env" $env | toJson -}}
+
+  {{- else -}}
+    {{- dict | toJson -}}
   {{- end -}}
 {{- end -}}
 
 {{- define "unibox.container.env.entry" -}}
 
-  {{- quote .name | printf "name: %s" -}}
+  {{- $entry := dict "name" .name -}}
 
   {{- $_ := list .scopeParent .name "!slice" | include "unibox.validate.type" -}}
 
@@ -163,18 +185,17 @@
 
     {{- $typeValue := index .scope $typeKey -}}
 
-    {{- print "\nvalueFrom:" -}}
+    {{- $valueFrom := dict -}}
 
     {{- if eq $typeKey "secret" "configMap" -}}
 
-      {{- eq $typeKey "secret" | ternary "secretKeyRef" "configMapKeyRef" | printf "%s:" | nindent 2 -}}
-      {{- include "unibox.render" (dict "value" $typeValue "ctx" .ctx "scope" .scopeLocal) | quote | printf "name: %s" | nindent 4 -}}
+      {{- $keyRef := dict "name" (include "unibox.render" (dict "value" $typeValue "ctx" .ctx "scope" .scopeLocal)) -}}
 
       {{- $key := .name -}}
       {{- if (list .scope "key" "string" | include "unibox.validate.type") -}}
         {{- $key = include "unibox.render" (dict "value" .scope.key "ctx" .ctx "scope" .scopeLocal) -}}
       {{- end -}}
-      {{- quote $key | printf "key: %s" | nindent 4 -}}
+      {{- $_ := set $keyRef "key" $key -}}
 
       {{- /*
         TODO: as for now, we allow only boolean .optional field. However, it might be templated.
@@ -184,59 +205,83 @@
         We should add it in the future and allow templated .optional field
       */ -}}
       {{- if (list .scope "optional" "bool" | include "unibox.validate.type") -}}
-        {{- printf "optional: %t" .scope.optional | nindent 4 -}}
+        {{- $_ := set $keyRef "optional" .scope.optional -}}
       {{- end -}}
+
+      {{- $_ := set $valueFrom (eq $typeKey "secret" | ternary "secretKeyRef" "configMapKeyRef") $keyRef -}}
 
     {{- else if eq $typeKey "resourceField" -}}
 
-      {{- printf "resourceFieldRef:" | nindent 2 -}}
-      {{- include "unibox.render" (dict "value" $typeValue "ctx" .ctx "scope" .scopeLocal) | quote | printf "resource: %s" | nindent 4 -}}
+      {{- $resourceFieldRef := dict "resource" (include "unibox.render" (dict "value" $typeValue "ctx" .ctx "scope" .scopeLocal)) -}}
 
       {{- if (list .scope "container" "string" | include "unibox.validate.type") -}}
         {{- /* TODO: add validation for container name. We should not allow any container name that is not defined
         in current list of containers. */ -}}
         {{- $container := include "unibox.render" (dict "value" .scope.container "ctx" .ctx "scope" .scopeLocal) -}}
-        {{- quote $container | printf "containerName: %s" | nindent 4 -}}
+        {{- $_ := set $resourceFieldRef "containerName" $container -}}
       {{- end -}}
 
       {{- if (list .scope "divisor" "string" | include "unibox.validate.type") -}}
         {{- $divisor := include "unibox.render" (dict "value" .scope.divisor "ctx" .ctx "scope" .scopeLocal) -}}
-        {{- quote $divisor | printf "divisor: %s" | nindent 4 -}}
+        {{- $_ := set $resourceFieldRef "divisor" $divisor -}}
       {{- end -}}
 
+      {{- $_ := set $valueFrom "resourceFieldRef" $resourceFieldRef -}}
+
     {{- else if eq $typeKey "field" -}}
-      {{- printf "fieldRef:" | nindent 2 -}}
-      {{- include "unibox.render" (dict "value" $typeValue "ctx" .ctx "scope" .scopeLocal) | quote | printf "fieldPath: %s" | nindent 4 -}}
-      {{- quote "v1" | printf "apiVersion: %s" | nindent 4 -}}
+      {{- $fieldRef := dict "apiVersion" "v1" "fieldPath" (include "unibox.render" (dict "value" $typeValue "ctx" .ctx "scope" .scopeLocal)) -}}
+      {{- $_ := set $valueFrom "fieldRef" $fieldRef -}}
     {{- else -}}
       {{- printf "this will never happen, since all possible $typeKey values are covered by 'if'/'else' (typeKey: '%s')" $typeKey | fail -}}
     {{- end -}}
 
+    {{- $_ := set $entry "valueFrom" $valueFrom -}}
+
   {{- else -}}
-    {{- include "unibox.render" (dict "value" .scope "ctx" .ctx "scope" .scopeLocal) | quote | printf "\nvalue: %s" -}}
+    {{- $_ := set $entry "value" (include "unibox.render" (dict "value" .scope "ctx" .ctx "scope" .scopeLocal)) -}}
   {{- end -}}
+
+  {{- toJson $entry -}}
 
 {{- end -}}
 
 {{- define "unibox.container.ports" -}}
   {{- if (list .scope "ports" "map" | include "unibox.validate.type") -}}
 
-    {{- print "\nports:" -}}
-
-    {{- include "unibox.foreach" (dict
+    {{- $ports := include "unibox.foreach" (dict
       "singleKey" false
       "pluralKey" "ports"
       "callback" "unibox.container.ports.entry"
       "asArray" true
       "isEntryMap" false
       "ctx" .ctx "scope" .scope
-    ) -}}
+    ) | fromJsonArray -}}
 
+    {{- dict "ports" $ports | toJson -}}
+
+  {{- else -}}
+    {{- dict | toJson -}}
   {{- end -}}
 {{- end -}}
 
 {{- define "unibox.container.ports.entry" -}}
-  {{- quote .name | printf "name: %s" -}}
-  {{- dict "scope" .scopeParent "key" .name "ctx" .ctx "scopeLocal" .scopeLocal | include "unibox.render.integer" | atoi | printf "\ncontainerPort: %d" -}}
-  {{- printf "\nprotocol: TCP" -}}
+  {{- dict
+    "name" .name
+    "protocol" "TCP"
+    "containerPort" (dict "scope" .scopeParent "key" .name "ctx" .ctx "scopeLocal" .scopeLocal | include "unibox.render.integer" | atoi)
+  | toJson -}}
+{{- end -}}
+
+{{- define "unibox.container.probe" -}}
+
+  {{- $probe := dict -}}
+
+  {{- $type := list "http" "grpc" "exec" "tcp"
+      | dict "scope" .scope "key" "type" "ctx" .ctx "default" "http" "list"
+      | include "unibox.render.enum" -}}
+
+  {{- template "unibox.validate.map" (printf "container.probe.%s.%s" .key $type | list .scopeParent .key) -}}
+
+  {{- dict (printf "%sProbe" .key) $probe | toJson -}}
+
 {{- end -}}

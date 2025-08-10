@@ -6,6 +6,7 @@
   "noDefaultNameMessage" "single deployment requires a non-empty name specified by .deployment.name, .deployment.nameOverride, or the application name set by the .app.name key"
   "validateMap" "deployment"
   "callback" "unibox.deployment"
+  "asDocument" true
   "ctx" $ "scope" .Values
 ) -}}
 

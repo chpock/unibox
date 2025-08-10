@@ -1,19 +1,23 @@
 
 {{- define "unibox.podTemplate" -}}
 
-  {{- print "\ntemplate:" -}}
-  {{- include "unibox.metadata" . | nindent 2 -}}
+  {{- $document := dict -}}
+  {{- $_ := include "unibox.metadata" . | fromJson | merge $document -}}
 
-  {{- print "spec:" | nindent 2 -}}
+  {{- $spec := dict -}}
 
-  {{- print "containers:" | nindent 4 -}}
-  {{- include "unibox.foreach" (dict
+  {{- $containers := include "unibox.foreach" (dict
     "singleKey" "container"
     "defaultName" .component
     "callback" "unibox.container"
     "asArray" true
     "validateMap" "container"
     "ctx" .ctx "scope" .scope
-  ) | indent 4 -}}
+  ) | fromJsonArray -}}
+
+  {{- $_ := set $spec "containers" $containers -}}
+  {{- $_ := set $document "spec" $spec -}}
+
+  {{- toJson $document -}}
 
 {{- end -}}

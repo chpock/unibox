@@ -5,43 +5,47 @@
     {{- list .scope "there are no containers defined in the deployment, please define at least one container in this deployment using the .container or .containers fields" | include "unibox.fail" -}}
   {{- end -}}
 
-  {{- template "unibox.document" (dict
+  {{- $document := include "unibox.document" (dict
     "apiVersion" (include "unibox.capabilities.deployment.apiVersion" .ctx)
     "kind" "Deployment"
-  ) -}}
+  ) | fromJson -}}
 
-  {{- template "unibox.metadata" (dict
+  {{- $_ := include "unibox.metadata" (dict
     "name" .nameFull
     "component" .name
     "isNamespaced" true
     "ctx" .ctx "scope" .scope
-  ) -}}
+  ) | fromJson | merge $document -}}
 
-  {{- print "\nspec:" -}}
+  {{- $spec := dict -}}
 
-  {{- include "unibox.selector" (dict
+  {{- $_ := include "unibox.selector" (dict
     "labelsKey" "podLabels"
     "component" .name
     "ctx" .ctx "scope" .scope
-  ) | indent 2 -}}
+  ) | fromJson | merge $spec -}}
 
   {{- $replicas := 1 -}}
   {{- if (hasKey .scope "replicas") -}}
     {{- $replicas = dict "scope" .scope "key" "replicas" "ctx" .ctx | include "unibox.render.integer" | atoi -}}
   {{- end -}}
-  {{- printf "replicas: %d" $replicas | nindent 2 -}}
+  {{- $_ := set $spec "replicas" $replicas -}}
 
   {{- if (list .scope "updateStrategy" "map" | include "unibox.validate.type") -}}
-    {{- print "strategy:" | nindent 2 -}}
-    {{- include "unibox.render" (dict "value" .scope.updateStrategy "ctx" .ctx "scope" .scope) | nindent 4 -}}
+    {{- $strategy := include "unibox.render" (dict "value" .scope.updateStrategy "ctx" .ctx "scope" .scope) | fromYaml -}}
+    {{- $_ := set $spec "strategy" $strategy -}}
   {{- end -}}
 
-  {{- include "unibox.podTemplate" (dict
+  {{- $_ := include "unibox.podTemplate" (dict
     "labelsKey" "podLabels"
     "annotationsKey" "podAnnotations"
     "component" .name
     "kindParent" "deployment"
     "ctx" .ctx "scope" .scope
-  ) | indent 2 -}}
+  ) | fromJson | dict "template" | merge $spec -}}
+
+  {{- $_ := set $document "spec" $spec -}}
+
+  {{- toJson $document -}}
 
 {{- end -}}
