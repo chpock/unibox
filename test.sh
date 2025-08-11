@@ -67,7 +67,7 @@ for TEST_CASE_FILE in "$EXAMPLES_DIR"/*.yaml; do
         elif ! diff -r . "$GOLDEN_DIR" >/dev/null; then
             echo
             echo "ERROR: found differences:"
-            diff --color=auto -rubBaN . "$GOLDEN_DIR"
+            diff --color=auto -rubBaN "$GOLDEN_DIR" .
             RC=1
         fi
         exit $RC
