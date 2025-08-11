@@ -264,12 +264,38 @@
   {{- end -}}
 {{- end -}}
 
+{{- define "unibox.container.getPorts" -}}
+
+  {{- $result := dict -}}
+
+  {{- $ports := include "unibox.foreach" (dict
+    "singleKey" false
+    "pluralKey" "ports"
+    "callback" "unibox.container.getPorts.callback"
+    "asArray" true
+    "isEntryMap" false
+    "ctx" .ctx "scope" .scope
+  ) | fromJsonArray -}}
+
+  {{- range $ports -}}
+    {{- $_ := merge $result . -}}
+  {{- end -}}
+
+  {{- $result | toJson -}}
+
+{{- end -}}
+
 {{- define "unibox.container.ports.entry" -}}
   {{- dict
     "name" .name
     "protocol" "TCP"
     "containerPort" (dict "scope" .scopeParent "key" .name "ctx" .ctx "scopeLocal" .scopeLocal | include "unibox.render.integer" | atoi)
   | toJson -}}
+{{- end -}}
+
+{{- define "unibox.container.getPorts.callback" -}}
+  {{- $number := dict "scope" .scopeParent "key" .name "ctx" .ctx "scopeLocal" .scopeLocal | include "unibox.render.integer" | atoi -}}
+  {{- dict .name $number | toJson -}}
 {{- end -}}
 
 {{- define "unibox.container.probe" -}}
@@ -282,6 +308,176 @@
 
   {{- template "unibox.validate.map" (printf "container.probe.%s.%s" .key $type | list .scopeParent .key) -}}
 
+  {{- /* type-specific parameters */ -}}
+
+  {{- /* port is mandatory parameter for http/grpc/tcp probe types */ -}}
+  {{- $port := "" -}}
+  {{- if (list "http" "grpc" "tcp" | has $type) -}}
+
+    {{- /* by default, port name for http/tcp probes is "http", and port name for grpc probe is "grpc" */ -}}
+    {{- $port = eq $type "grpc" | ternary "grpc" "http" -}}
+
+    {{- if (list .scope "port" "scalar" | include "unibox.validate.type") -}}
+      {{- $port = dict "value" .scope.port "ctx" .ctx "scope" .scopeLocal | include "unibox.render" -}}
+    {{- end -}}
+
+    {{- /* allow to define port as an integer number */ -}}
+    {{- if (regexMatch "^\\d+$" $port) -}}
+      {{- $port = atoi $port -}}
+    {{- else -}}
+
+      {{- $containerPorts := dict "ctx" .ctx "scope" .scopeLocal | include "unibox.container.getPorts" | fromJson -}}
+
+      {{- if not (hasKey $containerPorts $port) -}}
+        {{- $msg := "" -}}
+        {{- if (len $containerPorts) -}}
+          {{- $msg = keys $containerPorts | sortAlpha | join "', '" | printf "but the parent container has only the following %s: '%s'" (len $containerPorts | plural "port" "ports") -}}
+        {{- else -}}
+          {{- $msg = "but the parent container has no ports defined" -}}
+        {{- end -}}
+        {{- if (hasKey .scope "port") -}}
+          {{- printf "port '%s' is specified, %s" $port $msg | list .scope "port" | include "unibox.fail" -}}
+        {{- else -}}
+          {{- printf "port is not defined and the '%s' port name should be used by default, %s" $port $msg | list .scopeParent .key | include "unibox.fail" -}}
+        {{- end }}
+      {{- end -}}
+
+      {{- /* according to specs, port for grpc probe must be an integer number */ -}}
+      {{- if eq $type "grpc" -}}
+        {{- $port = index $containerPorts $port -}}
+      {{- end -}}
+
+    {{- end -}}
+
+  {{- end -}}
+
+  {{- if eq $type "http" -}}
+
+    {{- $scheme := list "http" "https" "HTTP" "HTTPS"
+        | dict "scope" .scope "key" "scheme" "ctx" .ctx "scopeLocal" .scopeLocal "default" "http" "list"
+        | include "unibox.render.enum"
+        | upper -}}
+
+    {{- $path := "/" -}}
+    {{- if (list .scope "path" "scalar" | include "unibox.validate.type") -}}
+      {{- $path = include "unibox.render" (dict "value" .scope.path "ctx" .ctx "scope" .scopeLocal) -}}
+    {{- end -}}
+
+    {{- $_ := set $probe "httpGet" (dict "port" $port "scheme" $scheme "path" $path) -}}
+
+    {{- if (list .scope "host" "scalar" | include "unibox.validate.type") -}}
+      {{- $host := include "unibox.render" (dict "value" .scope.host "ctx" .ctx "scope" .scopeLocal) -}}
+      {{- $_ := set $probe.httpGet "host" $host -}}
+    {{- end -}}
+
+    {{- if (list .scope "headers" "map" | include "unibox.validate.type") -}}
+
+      {{- $_ := list .scopeParent .key | include "unibox.getPath" | set .scope "__path__" -}}
+
+      {{- $httpHeaders := include "unibox.foreach" (dict
+        "singleKey" false
+        "pluralKey" "headers"
+        "callback" "unibox.container.probe.http.headers"
+        "asArray" true
+        "isEntryMap" false
+        "ctx" .ctx "scope" .scope
+      ) | fromJsonArray -}}
+
+      {{- $_ := set $probe.httpGet "httpHeaders" $httpHeaders -}}
+
+    {{- end -}}
+
+  {{- else if eq $type "grpc" -}}
+
+    {{- $_ := set $probe "grpc" (dict "port" $port) -}}
+
+    {{- if (list .scope "service" "slice" | include "unibox.validate.type") -}}
+      {{- $service := include "unibox.render" (dict "value" .scope.service "ctx" .ctx "scope" .scopeLocal) -}}
+      {{- $_ := set $probe.grpc "service" $service -}}
+    {{- end -}}
+
+  {{- else if eq $type "tcp" -}}
+
+    {{- $_ := set $probe "tcpSocket" (dict "port" $port) -}}
+
+    {{- if (list .scope "host" "slice" | include "unibox.validate.type") -}}
+      {{- $host := include "unibox.render" (dict "value" .scope.host "ctx" .ctx "scope" .scopeLocal) -}}
+      {{- $_ := set $probe.tcpSocket "host" $host -}}
+    {{- end -}}
+
+  {{- else if eq $type "exec" -}}
+
+    {{- if (list .scope "command" "!map" | include "unibox.validate.type") -}}
+
+      {{- $command := list -}}
+
+      {{- if not (kindIs "slice" .scope.command) -}}
+        {{- $command = include "unibox.render" (dict "value" .scope.command "ctx" .ctx "scope" .scopeLocal) | append $command -}}
+      {{- else -}}
+        {{- $scope := .scope -}}
+        {{- $ctx := .ctx -}}
+        {{- $scopeLocal := .scopeLocal -}}
+        {{- range until (len .scope.command) -}}
+          {{- $_ := list $scope "command" . "scalar" | include "unibox.validate.type" -}}
+          {{- $command = include "unibox.render" (dict "value" (index $scope "command" .) "ctx" $ctx "scope" $scopeLocal) | append $command -}}
+        {{- end -}}
+      {{- end -}}
+
+      {{- $_ := set $probe "exec" (dict "command" $command) -}}
+
+    {{- else -}}
+      {{- list .scopeParent .key "exec prope requires mandatory .command field" | include "unibox.fail" -}}
+    {{- end -}}
+
+  {{- else -}}
+    {{- printf "unibox.container.probe: unknown type '%s' (this should never happen)" $type | fail -}}
+  {{- end -}}
+
+  {{- /* common parameters */ -}}
+
+  {{- $failureThreshold := 3 -}}
+  {{- if (list .scope "failureThreshold" "scalar" | include "unibox.validate.type") -}}
+    {{- $failureThreshold = dict "scope" .scope "key" "failureThreshold" "ctx" .ctx "scopeLocal" .scopeLocal | include "unibox.render.integer" | atoi -}}
+  {{- end -}}
+  {{- $_ := set $probe "failureThreshold" $failureThreshold -}}
+
+  {{- $periodSeconds := 10 -}}
+  {{- if (list .scope "periodSeconds" "scalar" | include "unibox.validate.type") -}}
+    {{- $periodSeconds = dict "scope" .scope "key" "periodSeconds" "ctx" .ctx "scopeLocal" .scopeLocal | include "unibox.render.integer" | atoi -}}
+  {{- end -}}
+  {{- $_ := set $probe "periodSeconds" $periodSeconds -}}
+
+  {{- $timeoutSeconds := 10 -}}
+  {{- if (list .scope "timeoutSeconds" "scalar" | include "unibox.validate.type") -}}
+    {{- $timeoutSeconds = dict "scope" .scope "key" "timeoutSeconds" "ctx" .ctx "scopeLocal" .scopeLocal | include "unibox.render.integer" | atoi -}}
+  {{- end -}}
+  {{- $_ := set $probe "timeoutSeconds" $timeoutSeconds -}}
+
+  {{- $initialDelaySeconds := 0 -}}
+  {{- if (list .scope "initialDelaySeconds" "scalar" | include "unibox.validate.type") -}}
+    {{- $initialDelaySeconds = dict "scope" .scope "key" "initialDelaySeconds" "ctx" .ctx "scopeLocal" .scopeLocal | include "unibox.render.integer" | atoi -}}
+  {{- end -}}
+  {{- $_ := set $probe "initialDelaySeconds" $initialDelaySeconds -}}
+
+  {{- $successThreshold := 1 -}}
+  {{- /* successThreshold can be changed only for readinessProbe. For all other propes it must be 1 according to specs. */ -}}
+  {{- if eq .key "readiness" -}}
+    {{- if (list .scope "successThreshold" "scalar" | include "unibox.validate.type") -}}
+      {{- $successThreshold = dict "scope" .scope "key" "successThreshold" "ctx" .ctx "scopeLocal" .scopeLocal | include "unibox.render.integer" | atoi -}}
+    {{- end -}}
+  {{- end -}}
+  {{- $_ := set $probe "successThreshold" $successThreshold -}}
+
+  {{- if (list .scope "terminationGracePeriodSeconds" "scalar" | include "unibox.validate.type") -}}
+    {{- $terminationGracePeriodSeconds = dict "scope" .scope "key" "terminationGracePeriodSeconds" "ctx" .ctx "scopeLocal" .scopeLocal | include "unibox.render.integer" | atoi -}}
+    {{- $_ := set $probe "terminationGracePeriodSeconds" $terminationGracePeriodSeconds -}}
+  {{- end -}}
+
   {{- dict (printf "%sProbe" .key) $probe | toJson -}}
 
+{{- end -}}
+
+{{- define "unibox.container.probe.http.headers" -}}
+  {{- $_ := list .scopeParent .name "scalar" | include "unibox.validate.type" -}}
+  {{- dict "name" .name "value" .scope | toJson -}}
 {{- end -}}
