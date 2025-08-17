@@ -16,6 +16,7 @@
     {{- $scope := .scope -}}
     {{- range $key, $scopeProbe := omit .scope.probes "__path__" -}}
       {{- $_ := list $scope.probes $key "map" | include "unibox.validate.type" -}}
+      {{- $_ := list $scope.probes $key | include "unibox.getPath" | set $scopeProbe "__path__" -}}
       {{- $_ := dict "ctx" $ctx "scope" $scopeProbe "key" $key "scopeLocal" $scope "scopeParent" $scope.probes | include "unibox.container.probe" | fromJson | merge $document -}}
     {{- end -}}
   {{- end -}}
@@ -303,7 +304,7 @@
   {{- $probe := dict -}}
 
   {{- $type := list "http" "grpc" "exec" "tcp"
-      | dict "scope" .scope "key" "type" "ctx" .ctx "default" "http" "list"
+      | dict "scope" .scope "key" "type" "ctx" .ctx "scopeLocal" .scopeLocal "default" "http" "list"
       | include "unibox.render.enum" -}}
 
   {{- template "unibox.validate.map" (printf "container.probe.%s.%s" .key $type | list .scopeParent .key) -}}
@@ -378,6 +379,7 @@
         "singleKey" false
         "pluralKey" "headers"
         "callback" "unibox.container.probe.http.headers"
+        "callbackArgs" (deepCopy .scopeLocal | dict "scopeLocal")
         "asArray" true
         "isEntryMap" false
         "ctx" .ctx "scope" .scope
@@ -391,7 +393,7 @@
 
     {{- $_ := set $probe "grpc" (dict "port" $port) -}}
 
-    {{- if (list .scope "service" "slice" | include "unibox.validate.type") -}}
+    {{- if (list .scope "service" "scalar" | include "unibox.validate.type") -}}
       {{- $service := include "unibox.render" (dict "value" .scope.service "ctx" .ctx "scope" .scopeLocal) -}}
       {{- $_ := set $probe.grpc "service" $service -}}
     {{- end -}}
@@ -400,7 +402,7 @@
 
     {{- $_ := set $probe "tcpSocket" (dict "port" $port) -}}
 
-    {{- if (list .scope "host" "slice" | include "unibox.validate.type") -}}
+    {{- if (list .scope "host" "scalar" | include "unibox.validate.type") -}}
       {{- $host := include "unibox.render" (dict "value" .scope.host "ctx" .ctx "scope" .scopeLocal) -}}
       {{- $_ := set $probe.tcpSocket "host" $host -}}
     {{- end -}}
@@ -413,6 +415,8 @@
 
       {{- if not (kindIs "slice" .scope.command) -}}
         {{- $command = include "unibox.render" (dict "value" .scope.command "ctx" .ctx "scope" .scopeLocal) | append $command -}}
+      {{- else if not (len .scope.command) -}}
+        {{- list .scope "command" "the field must not be an empty array" | include "unibox.fail" -}}
       {{- else -}}
         {{- $scope := .scope -}}
         {{- $ctx := .ctx -}}
@@ -426,7 +430,7 @@
       {{- $_ := set $probe "exec" (dict "command" $command) -}}
 
     {{- else -}}
-      {{- list .scopeParent .key "exec prope requires mandatory .command field" | include "unibox.fail" -}}
+      {{- list .scopeParent .key "exec probe requires mandatory .command field" | include "unibox.fail" -}}
     {{- end -}}
 
   {{- else -}}
@@ -460,7 +464,7 @@
   {{- $_ := set $probe "initialDelaySeconds" $initialDelaySeconds -}}
 
   {{- $successThreshold := 1 -}}
-  {{- /* successThreshold can be changed only for readinessProbe. For all other propes it must be 1 according to specs. */ -}}
+  {{- /* successThreshold can be changed only for readinessProbe. For all other probes it must be 1 according to specs. */ -}}
   {{- if eq .key "readiness" -}}
     {{- if (list .scope "successThreshold" "scalar" | include "unibox.validate.type") -}}
       {{- $successThreshold = dict "scope" .scope "key" "successThreshold" "ctx" .ctx "scopeLocal" .scopeLocal | include "unibox.render.integer" | atoi -}}
@@ -469,7 +473,7 @@
   {{- $_ := set $probe "successThreshold" $successThreshold -}}
 
   {{- if (list .scope "terminationGracePeriodSeconds" "scalar" | include "unibox.validate.type") -}}
-    {{- $terminationGracePeriodSeconds = dict "scope" .scope "key" "terminationGracePeriodSeconds" "ctx" .ctx "scopeLocal" .scopeLocal | include "unibox.render.integer" | atoi -}}
+    {{- $terminationGracePeriodSeconds := dict "scope" .scope "key" "terminationGracePeriodSeconds" "ctx" .ctx "scopeLocal" .scopeLocal | include "unibox.render.integer" | atoi -}}
     {{- $_ := set $probe "terminationGracePeriodSeconds" $terminationGracePeriodSeconds -}}
   {{- end -}}
 
@@ -479,5 +483,6 @@
 
 {{- define "unibox.container.probe.http.headers" -}}
   {{- $_ := list .scopeParent .name "scalar" | include "unibox.validate.type" -}}
-  {{- dict "name" .name "value" .scope | toJson -}}
+  {{- $value := dict "value" .scope "ctx" .ctx "scope" .scopeLocal | include "unibox.render" -}}
+  {{- dict "name" .name "value" $value | toJson -}}
 {{- end -}}
