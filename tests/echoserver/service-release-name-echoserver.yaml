@@ -18,8 +18,7 @@ spec:
       protocol: TCP
       targetPort: http
   selector:
-    matchLabels:
-      app.kubernetes.io/component: echoserver
-      app.kubernetes.io/instance: release-name
-      app.kubernetes.io/name: echoserver
+    app.kubernetes.io/component: echoserver
+    app.kubernetes.io/instance: release-name
+    app.kubernetes.io/name: echoserver
   type: ClusterIP
