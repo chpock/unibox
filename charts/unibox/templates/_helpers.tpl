@@ -505,6 +505,9 @@
     "grpc" (list "port" "service")
     "tcp"  (list "host" "port")
   -}}
+  {{- $containerCommonResources := list
+    "cpu" "memory" "storage"
+  -}}
   {{- index (dict
     "root" (list
       "app" "global"
@@ -534,6 +537,7 @@
       "args"
       "ports"
       "probes"
+      "resources"
     )
     "container.image" (list
       "repository"
@@ -593,6 +597,9 @@
     "container.probe.readiness.grpc" (concat $containerCommonProbe (index $containerProbeByProbe "readiness") (index $containerProbeByType "grpc"))
     "container.probe.readiness.exec" (concat $containerCommonProbe (index $containerProbeByProbe "readiness") (index $containerProbeByType "exec"))
     "container.probe.readiness.tcp"  (concat $containerCommonProbe (index $containerProbeByProbe "readiness") (index $containerProbeByType "tcp"))
+    "container.resources" (concat $containerCommonResources (list "requests" "limits"))
+    "container.resources.requests" $containerCommonResources
+    "container.resources.limits" $containerCommonResources
   ) . | toJson -}}
 {{- end -}}
 

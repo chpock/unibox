@@ -8,6 +8,7 @@
   {{- $_ := include "unibox.container.args" . | fromJson | merge $document -}}
   {{- $_ := include "unibox.container.env" . | fromJson | merge $document -}}
   {{- $_ := include "unibox.container.ports" . | fromJson | merge $document -}}
+  {{- $_ := include "unibox.container.resources" . | fromJson | merge $document -}}
 
   {{- if (list .scope "probes" "map" | include "unibox.validate.type") -}}
     {{- template "unibox.validate.map" (list .scope "probes" "container.probes") -}}
@@ -485,4 +486,144 @@
   {{- $_ := list .scopeParent .name "scalar" | include "unibox.validate.type" -}}
   {{- $value := dict "value" .scope "ctx" .ctx "scope" .scopeLocal | include "unibox.render" -}}
   {{- dict "name" .name "value" $value | toJson -}}
+{{- end -}}
+
+{{- define "unibox.container.resources" -}}
+  {{- if (list .scope "resources" "!slice" | include "unibox.validate.type") -}}
+
+    {{- $resources := dict -}}
+
+    {{- if not (kindIs "map" .scope.resources) -}}
+
+      {{- $preset := list "nano" "micro" "small" "medium" "large" "xlarge" "2xlarge"
+          | dict "scope" .scope "key" "resources" "ctx" .ctx "scopeLocal" .scopeLocal "list"
+          | include "unibox.render.enum" -}}
+
+      {{- $resources = index (dict
+        "nano" (dict
+          "requests" (dict "cpu" "100m" "memory" "128Mi" "ephemeral-storage" "50Mi")
+          "limits" (dict "cpu" "150m" "memory" "192Mi" "ephemeral-storage" "2Gi")
+        )
+        "micro" (dict
+          "requests" (dict "cpu" "250m" "memory" "256Mi" "ephemeral-storage" "50Mi")
+          "limits" (dict "cpu" "375m" "memory" "384Mi" "ephemeral-storage" "2Gi")
+        )
+        "small" (dict
+          "requests" (dict "cpu" "500m" "memory" "512Mi" "ephemeral-storage" "50Mi")
+          "limits" (dict "cpu" "750m" "memory" "768Mi" "ephemeral-storage" "2Gi")
+        )
+        "medium" (dict
+          "requests" (dict "cpu" "500m" "memory" "1024Mi" "ephemeral-storage" "50Mi")
+          "limits" (dict "cpu" "750m" "memory" "1536Mi" "ephemeral-storage" "2Gi")
+        )
+        "large" (dict
+          "requests" (dict "cpu" "1.0" "memory" "2048Mi" "ephemeral-storage" "50Mi")
+          "limits" (dict "cpu" "1.5" "memory" "3072Mi" "ephemeral-storage" "2Gi")
+        )
+        "xlarge" (dict
+          "requests" (dict "cpu" "1.0" "memory" "3072Mi" "ephemeral-storage" "50Mi")
+          "limits" (dict "cpu" "3.0" "memory" "6144Mi" "ephemeral-storage" "2Gi")
+        )
+        "2xlarge" (dict
+          "requests" (dict "cpu" "1.0" "memory" "3072Mi" "ephemeral-storage" "50Mi")
+          "limits" (dict "cpu" "6.0" "memory" "12288Mi" "ephemeral-storage" "2Gi")
+        )
+      ) $preset -}}
+
+    {{- else -}}
+
+      {{- template "unibox.validate.map" (list .scope "resources" "container.resources") -}}
+
+      {{- $isSimple := or (hasKey .scope.resources "cpu") (hasKey .scope.resources "memory") (hasKey .scope.resources "storage") -}}
+      {{- $isDetailed := or (hasKey .scope.resources "requests") (hasKey .scope.resources "limits") -}}
+
+      {{- if and (not $isSimple) (not $isDetailed) -}}
+        {{- list .scope "resources" "resources must be specified in simple format ('cpu', 'memory', etc.) or in detailed format ('requests', 'limits')" | include "unibox.fail" -}}
+      {{- else if and $isSimple $isDetailed -}}
+        {{- list .scope "resources" "resources must be specified in only one of the formats: in simple ('cpu', 'memory', etc.) or detailed ('requests', 'limits')" | include "unibox.fail" -}}
+      {{- end -}}
+
+      {{- $_ := list .scope "resources" | include "unibox.getPath" | set .scope.resources "__path__" -}}
+      {{- $requests := dict -}}
+      {{- $limits := dict -}}
+
+      {{- if (list .scope.resources "cpu" "scalar" | include "unibox.validate.type") -}}
+        {{- $value := dict "value" .scope.resources.cpu "ctx" .ctx "scope" .scope | include "unibox.render" -}}
+        {{- /* TODO: add validation for cpu value */ -}}
+        {{- $_ := set $requests "cpu" $value -}}
+      {{- end -}}
+
+      {{- if (list .scope.resources "memory" "scalar" | include "unibox.validate.type") -}}
+        {{- $value := dict "value" .scope.resources.memory "ctx" .ctx "scope" .scope | include "unibox.render" -}}
+        {{- /* TODO: add validation for memory value */ -}}
+        {{- $_ := set $requests "memory" $value -}}
+        {{- $_ := set $limits "memory" $value -}}
+      {{- end -}}
+
+      {{- if (list .scope.resources "storage" "scalar" | include "unibox.validate.type") -}}
+        {{- $value := dict "value" .scope.resources.storage "ctx" .ctx "scope" .scope | include "unibox.render" -}}
+        {{- /* TODO: add validation for storage value */ -}}
+        {{- $_ := set $requests "ephemeral-storage" $value -}}
+      {{- end -}}
+
+      {{- if (list .scope.resources "requests" "map" | include "unibox.validate.type") -}}
+        {{- $_ := list .scope.resources "requests" | include "unibox.getPath" | set .scope.resources.requests "__path__" -}}
+        {{- template "unibox.validate.map" (list .scope.resources "requests" "container.resources.requests") -}}
+
+        {{- if (list .scope.resources.requests "cpu" "scalar" | include "unibox.validate.type") -}}
+          {{- $value := dict "value" .scope.resources.requests.cpu "ctx" .ctx "scope" .scope | include "unibox.render" -}}
+          {{- /* TODO: add validation for cpu value */ -}}
+          {{- $_ := set $requests "cpu" $value -}}
+        {{- end -}}
+
+        {{- if (list .scope.resources.requests "memory" "scalar" | include "unibox.validate.type") -}}
+          {{- $value := dict "value" .scope.resources.requests.memory "ctx" .ctx "scope" .scope | include "unibox.render" -}}
+          {{- /* TODO: add validation for memory value */ -}}
+          {{- $_ := set $requests "memory" $value -}}
+        {{- end -}}
+
+        {{- if (list .scope.resources.requests "storage" "scalar" | include "unibox.validate.type") -}}
+          {{- $value := dict "value" .scope.resources.requests.storage "ctx" .ctx "scope" .scope | include "unibox.render" -}}
+          {{- /* TODO: add validation for storage value */ -}}
+          {{- $_ := set $requests "ephemeral-storage" $value -}}
+        {{- end -}}
+      {{- end -}}
+
+      {{- if (list .scope.resources "limits" "map" | include "unibox.validate.type") -}}
+        {{- $_ := list .scope.resources "limits" | include "unibox.getPath" | set .scope.resources.limits "__path__" -}}
+        {{- template "unibox.validate.map" (list .scope.resources "limits" "container.resources.requests") -}}
+
+        {{- if (list .scope.resources.limits "cpu" "scalar" | include "unibox.validate.type") -}}
+          {{- $value := dict "value" .scope.resources.limits.cpu "ctx" .ctx "scope" .scope | include "unibox.render" -}}
+          {{- /* TODO: add validation for cpu value */ -}}
+          {{- $_ := set $limits "cpu" $value -}}
+        {{- end -}}
+
+        {{- if (list .scope.resources.limits "memory" "scalar" | include "unibox.validate.type") -}}
+          {{- $value := dict "value" .scope.resources.limits.memory "ctx" .ctx "scope" .scope | include "unibox.render" -}}
+          {{- /* TODO: add validation for memory value */ -}}
+          {{- $_ := set $limits "memory" $value -}}
+        {{- end -}}
+
+        {{- if (list .scope.resources.limits "storage" "scalar" | include "unibox.validate.type") -}}
+          {{- $value := dict "value" .scope.resources.limits.storage "ctx" .ctx "scope" .scope | include "unibox.render" -}}
+          {{- /* TODO: add validation for storage value */ -}}
+          {{- $_ := set $limits "ephemeral-storage" $value -}}
+        {{- end -}}
+      {{- end -}}
+
+      {{- if $requests -}}
+        {{- $_ := set $resources "requests" $requests -}}
+      {{- end -}}
+      {{- if $limits -}}
+        {{- $_ := set $resources "limits" $limits -}}
+      {{- end -}}
+
+    {{- end -}}
+
+    {{- dict "resources" $resources | toJson -}}
+
+  {{- else -}}
+    {{- dict | toJson -}}
+  {{- end -}}
 {{- end -}}
