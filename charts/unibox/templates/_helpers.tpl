@@ -62,6 +62,29 @@
   {{- $result -}}
 {{- end -}}
 
+{{- define "unibox.render.bool" -}}
+  {{- $result := "" -}}
+  {{- if (hasKey .scope .key) -}}
+    {{- $value := index .scope .key -}}
+    {{- if (kindIs "bool" $value) -}}
+      {{- $result = ternary "true" "false" $value -}}
+    {{- else if (kindIs "string" $value) -}}
+      {{- $value = default .scope .scopeLocal | dict "value" $value "ctx" .ctx "scope" | include "unibox.render" -}}
+      {{- if eq $value "true" "false" -}}
+        {{- $result = $value -}}
+      {{- end -}}
+    {{- end -}}
+    {{- if eq $result "" -}}
+      {{- "the key is expected to have a boolean type (true/false) or a string that can be rendered as a boolean value ('true'/'false')" | list .scope .key "" | include "unibox.validate.type.fail" -}}
+    {{- end -}}
+  {{- else if (hasKey . "default") -}}
+    {{- $result = ternary "true" "false" .default -}}
+  {{- else -}}
+    {{- printf "unibox.render.bool: could not find '%s' key in the scope and .default is not specified" .key | fail -}}
+  {{- end -}}
+  {{- $result -}}
+{{- end -}}
+
 {{- define "unibox.render.enum" -}}
   {{- $value := "" -}}
   {{- if (list .scope .key "string" | include "unibox.validate.type") -}}
@@ -133,6 +156,7 @@
   {{- if (list .scope $labelsKey "map" | include "unibox.validate.type") -}}
     {{- $ctx := .ctx -}}
     {{- $scope := .scope -}}
+    {{- $scopeLocal := default .scope .scopeLocal -}}
     {{- $labelsCustom := index .scope $labelsKey -}}
     {{- $_ := list .scope $labelsKey | include "unibox.getPath" | set $labelsCustom "__path__" -}}
     {{- range $k, $v := omit $labelsCustom "__path__" -}}
@@ -143,7 +167,7 @@
           {{- list $labelsCustom $k "this custom label name is not allowed" | include "unibox.fail" -}}
         {{- end -}}
       {{- end -}}
-      {{- $_ := include "unibox.render" (dict "value" $v "ctx" $ctx "scope" $scope) | set $labels $k -}}
+      {{- $_ := include "unibox.render" (dict "value" $v "ctx" $ctx "scope" $scopeLocal) | set $labels $k -}}
     {{- end -}}
   {{- end -}}
   {{- $labels | toJson -}}
@@ -155,8 +179,9 @@
   {{- if (list .scope $annotationsKey "map" | include "unibox.validate.type") -}}
     {{- $ctx := .ctx -}}
     {{- $scope := .scope -}}
+    {{- $scopeLocal := default .scope .scopeLocal -}}
     {{- range $k, $v :=  index .scope $annotationsKey -}}
-      {{- $_ := dict "value" $v "ctx" $ctx "scope" $scope | include "unibox.render" | set $annotations $k -}}
+      {{- $_ := dict "value" $v "ctx" $ctx "scope" $scopeLocal | include "unibox.render" | set $annotations $k -}}
     {{- end -}}
   {{- end -}}
   {{- $annotations | toJson -}}
@@ -432,7 +457,7 @@
     {{- $args := merge (dict "name" $name "ctx" $ctx "scope" .scope "scopeLocal" $scope "scopeParent" .scopeParent "nameFull" .nameFull) $callbackArgs -}}
     {{- $out := include $callback $args -}}
 
-    {{- if or (not $out) (eq $out "[]") -}}
+    {{- if or (not $out) (eq $out "[]" "{}") -}}
       {{- continue -}}
     {{- end -}}
 
@@ -525,6 +550,7 @@
       "annotations" "podAnnotations"
       "labels" "podLabels"
       "replicas"
+      "serviceAccount"
     )
     "container" (list
       "props" "properties"
@@ -600,6 +626,13 @@
     "container.resources" (concat $containerCommonResources (list "requests" "limits"))
     "container.resources.requests" $containerCommonResources
     "container.resources.limits" $containerCommonResources
+    "serviceAccount" (list
+      "name"
+      "annotations"
+      "labels"
+      "create"
+      "automount"
+    )
   ) . | toJson -}}
 {{- end -}}
 

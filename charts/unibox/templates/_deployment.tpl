@@ -42,6 +42,7 @@
     "annotationsKey" "podAnnotations"
     "component" .name
     "kindParent" "deployment"
+    "nameFull" .nameFull
     "ctx" .ctx "scope" .scope
   ) | fromJson | dict "template" | merge $spec -}}
 
