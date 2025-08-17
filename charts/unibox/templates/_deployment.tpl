@@ -19,11 +19,12 @@
 
   {{- $spec := dict -}}
 
-  {{- $_ := include "unibox.selector" (dict
+  {{- $matchLabels := include "unibox.selector" (dict
     "labelsKey" "podLabels"
     "component" .name
     "ctx" .ctx "scope" .scope
-  ) | fromJson | merge $spec -}}
+  ) | fromJson -}}
+  {{- $_ := dict "matchLabels" $matchLabels | set $spec "selector" -}}
 
   {{- $replicas := 1 -}}
   {{- if (hasKey .scope "replicas") -}}

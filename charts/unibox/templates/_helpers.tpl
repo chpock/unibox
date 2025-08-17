@@ -195,7 +195,7 @@
       {{- $_ := set $matchLabels $k $v -}}
     {{- end -}}
   {{- end -}}
-  {{- dict "selector" (dict "matchLabels" $matchLabels) | toJson -}}
+  {{- $matchLabels | toJson -}}
 {{- end -}}
 
 {{- define "unibox.document" -}}

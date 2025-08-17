@@ -29,11 +29,12 @@
 
   {{- $spec := dict -}}
 
-  {{- $_ := include "unibox.selector" (dict
+  {{- $matchLabels := include "unibox.selector" (dict
     "labelsKey" "podLabels"
     "component" .nameComponent
     "ctx" .ctx "scope" .scopeComponent
-  ) | fromJson | merge $spec -}}
+  ) | fromJson -}}
+  {{- $_ := set $spec "selector" $matchLabels -}}
 
   {{- $type := list "ClusterIP" "ExternalName" "LoadBalancer" "NodePort"
       | dict "scope" .scope "key" "type" "ctx" .ctx "default" "ClusterIP" "list"
