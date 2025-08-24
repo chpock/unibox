@@ -174,7 +174,7 @@
 {{- end -}}
 
 {{- define "unibox.annotations" -}}
-  {{- $annotations := dict -}}
+  {{- $annotations := default dict .annotations -}}
   {{- $annotationsKey := default "annotations" .annotationsKey -}}
   {{- if (list .scope $annotationsKey "map" | include "unibox.validate.type") -}}
     {{- $ctx := .ctx -}}
@@ -188,20 +188,20 @@
 {{- end -}}
 
 {{- define "unibox.metadata" -}}
-    {{- $metadata := dict -}}
-    {{- if .name -}}
-      {{- $_ := set $metadata "name" .name -}}
-    {{- end -}}
-    {{- if .isNamespaced -}}
-      {{- $_ := set $metadata "namespace" .ctx.Release.Namespace -}}
-    {{- end -}}
-    {{- with include "unibox.labels" . | fromJson -}}
-      {{- $_ := set $metadata "labels" . -}}
-    {{- end -}}
-    {{- with include "unibox.annotations" . | fromJson -}}
-      {{- $_ := set $metadata "annotations" . -}}
-    {{- end -}}
-    {{- dict "metadata" $metadata | toJson -}}
+  {{- $metadata := dict -}}
+  {{- if .name -}}
+    {{- $_ := set $metadata "name" .name -}}
+  {{- end -}}
+  {{- if .isNamespaced -}}
+    {{- $_ := set $metadata "namespace" .ctx.Release.Namespace -}}
+  {{- end -}}
+  {{- with include "unibox.labels" . | fromJson -}}
+    {{- $_ := set $metadata "labels" . -}}
+  {{- end -}}
+  {{- with include "unibox.annotations" . | fromJson -}}
+    {{- $_ := set $metadata "annotations" . -}}
+  {{- end -}}
+  {{- dict "metadata" $metadata | toJson -}}
 {{- end -}}
 
 {{- define "unibox.selector" -}}
@@ -425,7 +425,7 @@
 
   {{- if and .singleKey (list $scope .singleKey "map" | include "unibox.validate.type") -}}
     {{- $entity := index $scope .singleKey -}}
-    {{- if (hasKey $entity "enabled" | ternary .enabled (not $defaultDisabled)) -}}
+    {{- if (hasKey $entity "enabled" | ternary $entity.enabled (not $defaultDisabled)) -}}
       {{- if and $isEntryMap $validateMap -}}
         {{- template "unibox.validate.map" (list $scope .singleKey $validateMap) -}}
       {{- end -}}
@@ -539,6 +539,7 @@
       "props" "properties"
       "nameOverride"
       "deployment" "deployments"
+      "sealedSecret" "sealedSecrets"
     )
     "deployment" (list
       "props" "properties"
@@ -632,6 +633,20 @@
       "labels"
       "create"
       "automount"
+    )
+    "sealedSecret" (list
+      "props" "properties"
+      "enabled"
+      "name" "nameOverride"
+      "annotations"
+      "labels"
+      "scope"
+      "encryptedData"
+      "type"
+      "immutable"
+      "secretLabels"
+      "secretAnnotations"
+      "data"
     )
   ) . | toJson -}}
 {{- end -}}

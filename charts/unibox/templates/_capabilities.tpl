@@ -14,3 +14,7 @@
 {{- define "unibox.capabilities.serviceAccount.apiVersion" -}}
   {{- print "v1" -}}
 {{- end -}}
+
+{{- define "unibox.capabilities.sealedSecret.apiVersion" -}}
+  {{- print "bitnami.com/v1alpha1" -}}
+{{- end -}}
