@@ -6,9 +6,17 @@
   {{- $_ := include "unibox.container.image" . | fromJson | merge $document -}}
   {{- $_ := include "unibox.container.command" . | fromJson | merge $document -}}
   {{- $_ := include "unibox.container.args" . | fromJson | merge $document -}}
-  {{- $_ := include "unibox.container.env" . | fromJson | merge $document -}}
   {{- $_ := include "unibox.container.ports" . | fromJson | merge $document -}}
   {{- $_ := include "unibox.container.resources" . | fromJson | merge $document -}}
+
+  {{- $checksumEnvSecret := "" -}}
+  {{- $checksumEnvConfigMap := "" -}}
+
+  {{- with include "unibox.container.env" . | fromJson -}}
+    {{- $_ := dict "env" .env | merge $document -}}
+    {{- $checksumEnvSecret = .checksumsSecret -}}
+    {{- $checksumEnvConfigMap = .checksumsConfigMap -}}
+  {{- end -}}
 
   {{- if (list .scope "probes" "map" | include "unibox.validate.type") -}}
     {{- template "unibox.validate.map" (list .scope "probes" "container.probes") -}}
@@ -22,7 +30,8 @@
     {{- end -}}
   {{- end -}}
 
-  {{- toJson $document -}}
+  {{- dict "container" $document "checksumEnvSecret" $checksumEnvSecret "checksumEnvConfigMap" $checksumEnvConfigMap | toJson -}}
+
 {{- end -}}
 
 {{- define "unibox.container.image" -}}
@@ -145,16 +154,36 @@
 {{- define "unibox.container.env" -}}
   {{- if (list .scope "env" "map" | include "unibox.validate.type") -}}
 
-    {{- $env := include "unibox.foreach" (dict
+    {{- $env := list -}}
+    {{- $checksumsSecret := list -}}
+    {{- $checksumsConfigMap := list -}}
+
+    {{- range include "unibox.foreach" (dict
       "singleKey" false
       "pluralKey" "env"
       "callback" "unibox.container.env.entry"
+      "callbackArgs" (dict "secretInfo" .secretInfo)
       "asArray" true
       "isEntryMap" false
       "ctx" .ctx "scope" .scope
     ) | fromJsonArray -}}
+      {{- $env = append $env .entry -}}
+      {{- if .checksumSecret -}}
+        {{- $checksumsSecret = append $checksumsSecret .checksumSecret -}}
+      {{- end -}}
+      {{- if .checksumConfigMap -}}
+        {{- $checksumsConfigMap = append $checksumsConfigMap .checksumConfigMap -}}
+      {{- end -}}
+    {{- end -}}
 
-    {{- dict "env" $env | toJson -}}
+    {{- if $checksumsSecret -}}
+      {{- $checksumsSecret = sortAlpha $checksumsSecret | toString | sha256sum -}}
+    {{- end -}}
+    {{- if $checksumsConfigMap -}}
+      {{- $checksumsConfigMap = sortAlpha $checksumsConfigMap | toString | sha256sum -}}
+    {{- end -}}
+
+    {{- dict "env" $env "checksumsSecret" $checksumsSecret "checksumsConfigMap" $checksumsConfigMap | toJson -}}
 
   {{- else -}}
     {{- dict | toJson -}}
@@ -164,6 +193,8 @@
 {{- define "unibox.container.env.entry" -}}
 
   {{- $entry := dict "name" .name -}}
+  {{- $checksumSecret := "" -}}
+  {{- $checksumConfigMap := "" -}}
 
   {{- $_ := list .scopeParent .name "!slice" | include "unibox.validate.type" -}}
 
@@ -191,26 +222,37 @@
 
     {{- if eq $typeKey "secret" "configMap" -}}
 
-      {{- $keyRef := dict "name" (include "unibox.render" (dict "value" $typeValue "ctx" .ctx "scope" .scopeLocal)) -}}
-
-      {{- $key := .name -}}
+      {{- $keyRefKey := .name -}}
       {{- if (list .scope "key" "string" | include "unibox.validate.type") -}}
-        {{- $key = include "unibox.render" (dict "value" .scope.key "ctx" .ctx "scope" .scopeLocal) -}}
-      {{- end -}}
-      {{- $_ := set $keyRef "key" $key -}}
-
-      {{- /*
-        TODO: as for now, we allow only boolean .optional field. However, it might be templated.
-        We must allow string type for this field also. But we should process template in this case
-        and compare result with boolean constants 'true' and 'false'. We should give clear error
-        message if we got something else. As for now, we don't have such helper function.
-        We should add it in the future and allow templated .optional field
-      */ -}}
-      {{- if (list .scope "optional" "bool" | include "unibox.validate.type") -}}
-        {{- $_ := set $keyRef "optional" .scope.optional -}}
+        {{- $keyRefKey = include "unibox.render" (dict "value" .scope.key "ctx" .ctx "scope" .scopeLocal) -}}
       {{- end -}}
 
-      {{- $_ := set $valueFrom (eq $typeKey "secret" | ternary "secretKeyRef" "configMapKeyRef") $keyRef -}}
+      {{- $optional := dict "scope" .scope "key" "optional" "ctx" .ctx "scopeLocal" .scopeLocal "default" false | include "unibox.render.bool" | eq "true" -}}
+
+      {{- $keyRefName := include "unibox.render" (dict "value" $typeValue "ctx" .ctx "scope" .scopeLocal) -}}
+
+      {{- if eq $typeKey "secret" -}}
+
+        {{- $keyRefNameOriginal := $keyRefName -}}
+
+        {{- if (hasKey .secretInfo.shortcuts $keyRefName) -}}
+          {{- $keyRefName = index .secretInfo.shortcuts $keyRefName -}}
+        {{- end -}}
+
+        {{- if (hasKey .secretInfo.entries $keyRefName) -}}
+          {{- $secretInfoEntry := index .secretInfo.entries $keyRefName -}}
+          {{- if (hasKey $secretInfoEntry.data $keyRefKey) -}}
+            {{- $checksumSecret = index $secretInfoEntry.data $keyRefKey -}}
+          {{- else if not $optional -}}
+            {{- printf "no entry '%s' in the %s '%s' is found. If this is expected and the secret may be missing, please set .optional flag to this environment variable entry" $keyRefKey $secretInfoEntry.type $keyRefNameOriginal | list .scope $typeKey | include "unibox.fail" -}}
+          {{- end -}}
+        {{- else if not $optional -}}
+          {{- printf "no secrets or sealedsecrets named '%s' were found. If this is expected and the secret may be missing, please set .optional flag to this environment variable entry" $keyRefNameOriginal | list .scope $typeKey | include "unibox.fail" -}}
+        {{- end -}}
+
+      {{- end -}}
+
+      {{- $_ := dict "name" $keyRefName "key" $keyRefKey "optional" $optional | set $valueFrom (eq $typeKey "secret" | ternary "secretKeyRef" "configMapKeyRef") -}}
 
     {{- else if eq $typeKey "resourceField" -}}
 
@@ -243,7 +285,7 @@
     {{- $_ := set $entry "value" (include "unibox.render" (dict "value" .scope "ctx" .ctx "scope" .scopeLocal)) -}}
   {{- end -}}
 
-  {{- toJson $entry -}}
+  {{- dict "entry" $entry "checksumSecret" $checksumSecret "checksumConfigMap" $checksumConfigMap | toJson -}}
 
 {{- end -}}
 
