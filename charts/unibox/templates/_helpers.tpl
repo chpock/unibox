@@ -540,6 +540,7 @@
       "nameOverride"
       "deployment" "deployments"
       "sealedSecret" "sealedSecrets"
+      "storage" "storages"
     )
     "deployment" (list
       "props" "properties"
@@ -647,6 +648,19 @@
       "secretLabels"
       "secretAnnotations"
       "data"
+    )
+    "storage" (list
+      "props" "properties"
+      "enabled"
+      "name" "nameOverride"
+      "annotations"
+      "labels"
+      "allowVolumeExpansion"
+      "mountOptions"
+      "parameters"
+      "provisioner"
+      "reclaimPolicy"
+      "volumeBindingMode"
     )
   ) . | toJson -}}
 {{- end -}}

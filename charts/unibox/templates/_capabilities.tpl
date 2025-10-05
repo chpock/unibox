@@ -18,3 +18,7 @@
 {{- define "unibox.capabilities.sealedSecret.apiVersion" -}}
   {{- print "bitnami.com/v1alpha1" -}}
 {{- end -}}
+
+{{- define "unibox.capabilities.storage.apiVersion" -}}
+  {{- print "storage.k8s.io/v1" -}}
+{{- end -}}
