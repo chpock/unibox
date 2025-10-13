@@ -22,3 +22,11 @@
 {{- define "unibox.capabilities.storage.apiVersion" -}}
   {{- print "storage.k8s.io/v1" -}}
 {{- end -}}
+
+{{- define "unibox.capabilities.pvc.apiVersion" -}}
+  {{- print "v1" -}}
+{{- end -}}
+
+{{- define "unibox.capabilities.pv.apiVersion" -}}
+  {{- print "v1" -}}
+{{- end -}}

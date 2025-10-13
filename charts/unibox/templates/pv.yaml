@@ -1,0 +1,16 @@
+{{- template "unibox.validateAll" .Values -}}
+
+{{- include "unibox.foreach" (dict
+  "singleKey" "pvc"
+  "defaultName" "default"
+  "validateMap" "pvc"
+  "callback" "unibox.pv"
+  "callbackArgs" (dict
+    "storageInfo" (include "unibox.storage.getInfo" $ | fromJson)
+    "secretInfo" (include "unibox.sealedSecret.getInfo" $ | fromJson)
+  )
+  "asDocument" true
+  "ctx" $ "scope" .Values
+) -}}
+
+

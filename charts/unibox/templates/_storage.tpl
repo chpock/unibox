@@ -71,3 +71,42 @@
 
 {{- end -}}
 
+{{- define "unibox.storage.getInfo" -}}
+
+  {{- $shortcuts := dict -}}
+  {{- $entries := dict -}}
+
+  {{- range include "unibox.foreach" (dict
+    "singleKey" "storage"
+    "defaultName" "default"
+    "validateMap" "storage"
+    "callback" "unibox.storage.getInfo.foreach"
+    "asArray" true
+    "ctx" . "scope" .Values
+  ) | fromJsonArray -}}
+    {{- $_ := merge $shortcuts .shortcuts -}}
+    {{- $_ := merge $entries .entries -}}
+  {{- end -}}
+
+  {{- dict "shortcuts" $shortcuts "entries" $entries | toJson -}}
+
+{{- end -}}
+
+{{- define "unibox.storage.getInfo.foreach" -}}
+
+  {{- $name := .nameFull -}}
+  {{- $data := dict -}}
+
+  {{- (dict
+    "shortcuts" (dict
+      .name .nameFull
+    )
+    "entries" (dict
+      .nameFull (dict
+        "type" "storage"
+        "data" $data
+      )
+    )
+  ) | toJson -}}
+
+{{- end -}}

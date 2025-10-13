@@ -87,10 +87,18 @@
 
 {{- define "unibox.render.enum" -}}
   {{- $value := "" -}}
-  {{- if (list .scope .key "string" | include "unibox.validate.type") -}}
-    {{- $value = default .scope .scopeLocal | dict "value" (index .scope .key) "ctx" .ctx "scope" | include "unibox.render" -}}
+  {{- if (hasKey .scope .key) -}}
+    {{- $idx := "" -}}
+    {{- if (hasKey . "idx") -}}
+      {{- $_ := list .scope .key .idx "string" | include "unibox.validate.type" -}}
+      {{- $value = index .scope .key .idx -}}
+      {{- $idx = .idx -}}
+    {{- else if (list .scope .key "string" | include "unibox.validate.type") -}}
+      {{- $value = index .scope .key -}}
+    {{- end -}}
+    {{- $value = default .scope .scopeLocal | dict "value" $value "ctx" .ctx "scope" | include "unibox.render" -}}
     {{- if not (has $value .list) -}}
-      {{- last .list | printf "'%s' or '%s'" (initial .list | join "', '") | printf "the key value is specified as '%s', but one of the following values is expected: %s" $value | list .scope .key "" | include "unibox.fail" -}}
+      {{- last .list | printf "'%s' or '%s'" (initial .list | join "', '") | printf "the key value is specified as '%s', but one of the following values is expected: %s" $value | list .scope .key .idx | include "unibox.fail" -}}
     {{- end -}}
   {{- else -}}
     {{- $value = .default -}}
@@ -541,6 +549,7 @@
       "deployment" "deployments"
       "sealedSecret" "sealedSecrets"
       "storage" "storages"
+      "pvc" "pvcs"
     )
     "deployment" (list
       "props" "properties"
@@ -661,6 +670,43 @@
       "provisioner"
       "reclaimPolicy"
       "volumeBindingMode"
+    )
+    "pvc" (list
+      "props" "properties"
+      "enabled"
+      "name" "nameOverride"
+      "annotations"
+      "labels"
+      "accessMode" "accessModes"
+      "capacity"
+      "storage"
+      "pv"
+    )
+    "pvc.storage" (list
+      "enabled"
+      "class"
+    )
+    "pv" (list
+      "props" "properties"
+      "annotations"
+      "labels"
+      "mountOptions"
+      "csi"
+    )
+    "pv.csi" (list
+      "driver"
+      "fsType"
+      "readOnly"
+      "volumeAttributes"
+      "volumeHandle"
+      "secrets"
+    )
+    "pv.csi.secrets" (list
+      "controllerExpand"
+      "controllerPublish"
+      "nodeExpand"
+      "nodePublish"
+      "nodeStage"
     )
   ) . | toJson -}}
 {{- end -}}
