@@ -94,7 +94,7 @@
 
       {{- if (list $scope.csi "secrets" "map" | include "unibox.validate.type") -}}
 
-        {{- template "unibox.validate.map" (list $scope "csi" "pv.csi.secrets") -}}
+        {{- template "unibox.validate.map" (list $scope.csi "secrets" "pv.csi.secrets") -}}
         {{- $_ := list $scope.csi "secrets" | include "unibox.getPath" | set $scope.csi.secrets "__path__" -}}
 
         {{- $ctx := .ctx -}}
