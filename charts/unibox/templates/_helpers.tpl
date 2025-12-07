@@ -390,6 +390,7 @@
 
   {{- $entities := dict -}}
   {{- $scope := .scope -}}
+  {{- $scopeLocal := default .scope .scopeLocal -}}
   {{- $ctx := .ctx -}}
   {{- $defaultDisabled := .defaultDisabled -}}
   {{- $singleKey := .singleKey -}}
@@ -407,7 +408,7 @@
     {{- $_ := list $scope $pluralKey | include "unibox.getPath" | set $entitiesRaw "__path__" -}}
     {{- range $key, $_ := omit $entitiesRaw "__path__" -}}
       {{- $name := $key -}}
-      {{- if $isEntryMap -}}
+      {{- if (or $isEntryMap (kindIs "map" .)) -}}
         {{- $_ := list $entitiesRaw $key "map" | include "unibox.validate.type" -}}
         {{- if not (hasKey . "enabled" | ternary .enabled (not $defaultDisabled)) -}}
           {{- continue -}}
@@ -431,24 +432,34 @@
     {{- end -}}
   {{- end -}}
 
-  {{- if and .singleKey (list $scope .singleKey "map" | include "unibox.validate.type") -}}
+
+  {{- if and .singleKey (or (and (not $isEntryMap) (hasKey $scope .singleKey)) (and $isEntryMap (list $scope .singleKey "map" | include "unibox.validate.type"))) -}}
     {{- $entity := index $scope .singleKey -}}
-    {{- if (hasKey $entity "enabled" | ternary $entity.enabled (not $defaultDisabled)) -}}
-      {{- if and $isEntryMap $validateMap -}}
-        {{- template "unibox.validate.map" (list $scope .singleKey $validateMap) -}}
+    {{- $name := .defaultName -}}
+    {{- $nameFull := $name -}}
+    {{- if (or $isEntryMap (kindIs "map" $entity)) -}}
+      {{- if (hasKey $entity "enabled" | ternary $entity.enabled (not $defaultDisabled)) -}}
+        {{- if and $isEntryMap $validateMap -}}
+          {{- template "unibox.validate.map" (list $scope .singleKey $validateMap) -}}
+        {{- end -}}
+        {{- $_ := list $scope .singleKey | include "unibox.getPath" | set $entity "__path__" -}}
+        {{- $name = dict "defaultName" .defaultName "ctx" $ctx "scope" $entity "prefixName" $prefixName | include "unibox.name" -}}
+        {{- if not $name -}}
+          {{- list $scope .singleKey $noDefaultNameMessage | include "unibox.fail" -}}
+        {{- end -}}
+        {{- $nameFull = $name -}}
+        {{- if and $nameFullRequired (not (hasKey $entity "nameOverride")) -}}
+          {{- $nameFull = printf "%s-%s" $releaseName $nameFull -}}
+        {{- end -}}
+      {{- else -}}
+        {{- $name = "" -}}
       {{- end -}}
-      {{- $_ := list $scope .singleKey | include "unibox.getPath" | set $entity "__path__" -}}
-      {{- $name := dict "defaultName" .defaultName "ctx" $ctx "scope" $entity "prefixName" $prefixName | include "unibox.name" -}}
-      {{- if not $name -}}
-        {{- list $scope .singleKey $noDefaultNameMessage | include "unibox.fail" -}}
-      {{- else if (hasKey $entities $name) -}}
+    {{- end -}}
+    {{- if $name -}}
+      {{- if (hasKey $entities $name) -}}
         {{- $name | printf "duplicated name '%s'" | list $scope .singleKey | include "unibox.fail" -}}
       {{- end -}}
-      {{- $nameFull := $name -}}
-      {{- if and $nameFullRequired (not (hasKey $entity "nameOverride")) -}}
-        {{- $nameFull = printf "%s-%s" $releaseName $nameFull -}}
-      {{- end -}}
-      {{- $_ = dict "scopeParent" $entity "scope" $entity "nameFull" $nameFull | set $entities $name -}}
+      {{- $_ := dict "scopeParent" $scope "scope" $entity "nameFull" $nameFull | set $entities $name -}}
     {{- end -}}
   {{- end -}}
 
@@ -462,7 +473,7 @@
   {{- $resultFirst := true -}}
   {{- range $name, $_ := $entities -}}
 
-    {{- $args := merge (dict "name" $name "ctx" $ctx "scope" .scope "scopeLocal" $scope "scopeParent" .scopeParent "nameFull" .nameFull) $callbackArgs -}}
+    {{- $args := merge (dict "name" $name "ctx" $ctx "scope" .scope "key" .key "scopeLocal" $scopeLocal "scopeParent" .scopeParent "nameFull" .nameFull) $callbackArgs -}}
     {{- $out := include $callback $args -}}
 
     {{- if or (not $out) (eq $out "[]" "{}") -}}
@@ -562,6 +573,7 @@
       "labels" "podLabels"
       "replicas"
       "serviceAccount"
+      "volume" "volumes"
     )
     "container" (list
       "props" "properties"
@@ -601,6 +613,12 @@
     "container.env.field" (list
       "secret" "configMap" "resourceField" "field"
     )
+    "volume.secret" (list "secret" "defaultMode" "items" "optional")
+    "volume.configMap" (list "configMap" "defaultMode" "items" "optional")
+    "volume.hostPath" (list "hostPath" "type")
+    "volume.pvc" (list "pvc" "readOnly")
+    "volume.emptyDir" (list "emptyDir" "sizeLimit")
+    "volume.secretOrConfigMap.item" (list "path" "mode")
     "service.ClusterIP" $serviceCommonKeys
     "service.ExternalName" $serviceCommonKeys
     "service.LoadBalancer" $serviceCommonKeys

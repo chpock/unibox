@@ -1,9 +1,40 @@
-
 {{- define "unibox.podTemplate" -}}
+
+  {{- $secretInfo := include "unibox.sealedSecret.getInfo" .ctx | fromJson -}}
 
   {{- $document := dict -}}
 
   {{- $spec := dict -}}
+
+  {{- $volumes := list -}}
+  {{- $volumeNames := list -}}
+  {{- $checksumsVolSecret := list -}}
+  {{- $checksumsVolConfigMap := list -}}
+
+  {{- range include "unibox.foreach" (dict
+    "singleKey" "volume"
+    "defaultName" "default"
+    "callback" "unibox.volume"
+    "callbackArgs" (dict
+      "secretInfo" $secretInfo
+    )
+    "asArray" true
+    "isEntryMap" false
+    "ctx" .ctx "scope" .scope
+  ) | fromJsonArray -}}
+    {{- $volumes = append $volumes .entry -}}
+    {{- $volumeNames = append $volumeNames .name -}}
+    {{- if .checksumSecret -}}
+      {{- $checksumsVolSecret = append $checksumsVolSecret .checksumSecret -}}
+    {{- end -}}
+    {{- if .checksumConfigMap -}}
+      {{- $checksumsVolConfigMap = append $checksumsVolConfigMap .checksumConfigMap -}}
+    {{- end -}}
+  {{- end -}}
+
+  {{- if (len $volumes) -}}
+    {{- $_ := set $spec "volumes" $volumes -}}
+  {{- end -}}
 
   {{- $containers := list -}}
   {{- $checksumsEnvSecret := list -}}
@@ -14,7 +45,7 @@
     "defaultName" .component
     "callback" "unibox.container"
     "callbackArgs" (dict
-      "secretInfo" (include "unibox.sealedSecret.getInfo" .ctx | fromJson)
+      "secretInfo" $secretInfo
     )
     "asArray" true
     "validateMap" "container"
@@ -47,6 +78,24 @@
     */ -}}
     {{- $checksum := sortAlpha $checksumsEnvConfigMap | toString | cat .nameFull | sha256sum -}}
     {{- $_ := set $annotations "unibox/checksum-env-configmap" $checksum -}}
+  {{- end -}}
+
+  {{- if $checksumsVolSecret -}}
+    {{- /*
+      Here we use .nameFull as a salt to improve security. The hash should be different
+      for different deployments, even if they have the same set of credentials.
+    */ -}}
+    {{- $checksum := sortAlpha $checksumsVolSecret | toString | cat .nameFull | sha256sum -}}
+    {{- $_ := set $annotations "unibox/checksum-vol-secret" $checksum -}}
+  {{- end -}}
+
+  {{- if $checksumsVolConfigMap -}}
+    {{- /*
+      Here we use .nameFull as a salt to improve security. The hash should be different
+      for different deployments, even if they have the same set of credentials.
+    */ -}}
+    {{- $checksum := sortAlpha $checksumsVolConfigMap | toString | cat .nameFull | sha256sum -}}
+    {{- $_ := set $annotations "unibox/checksum-vol-configmap" $checksum -}}
   {{- end -}}
 
   {{- $_ := include "unibox.metadata" (merge (dict "annotations" $annotations) .) | fromJson | merge $document -}}

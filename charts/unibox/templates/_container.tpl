@@ -216,7 +216,7 @@
 
     {{- template "unibox.validate.map" (list .scope (printf "container.env.%s" $typeKey)) -}}
 
-    {{- $typeValue := index .scope $typeKey -}}
+    {{- $typeValue := include "unibox.render" (dict "value" (index .scope $typeKey) "ctx" .ctx "scope" .scopeLocal) -}}
 
     {{- $valueFrom := dict -}}
 
@@ -229,7 +229,7 @@
 
       {{- $optional := dict "scope" .scope "key" "optional" "ctx" .ctx "scopeLocal" .scopeLocal "default" false | include "unibox.render.bool" | eq "true" -}}
 
-      {{- $keyRefName := include "unibox.render" (dict "value" $typeValue "ctx" .ctx "scope" .scopeLocal) -}}
+      {{- $keyRefName := $typeValue -}}
 
       {{- if eq $typeKey "secret" -}}
 
@@ -242,7 +242,7 @@
         {{- if (hasKey .secretInfo.entries $keyRefName) -}}
           {{- $secretInfoEntry := index .secretInfo.entries $keyRefName -}}
           {{- if (hasKey $secretInfoEntry.data $keyRefKey) -}}
-            {{- $checksumSecret = index $secretInfoEntry.data $keyRefKey -}}
+            {{- $checksumSecret = index $secretInfoEntry.data $keyRefKey | cat .name | sha256sum -}}
           {{- else if not $optional -}}
             {{- printf "no entry '%s' in the %s '%s' is found. If this is expected and the secret may be missing, please set .optional flag to this environment variable entry" $keyRefKey $secretInfoEntry.type $keyRefNameOriginal | list .scope $typeKey | include "unibox.fail" -}}
           {{- end -}}
@@ -256,7 +256,7 @@
 
     {{- else if eq $typeKey "resourceField" -}}
 
-      {{- $resourceFieldRef := dict "resource" (include "unibox.render" (dict "value" $typeValue "ctx" .ctx "scope" .scopeLocal)) -}}
+      {{- $resourceFieldRef := dict "resource" $typeValue -}}
 
       {{- if (list .scope "container" "string" | include "unibox.validate.type") -}}
         {{- /* TODO: add validation for container name. We should not allow any container name that is not defined
@@ -273,7 +273,7 @@
       {{- $_ := set $valueFrom "resourceFieldRef" $resourceFieldRef -}}
 
     {{- else if eq $typeKey "field" -}}
-      {{- $fieldRef := dict "apiVersion" "v1" "fieldPath" (include "unibox.render" (dict "value" $typeValue "ctx" .ctx "scope" .scopeLocal)) -}}
+      {{- $fieldRef := dict "apiVersion" "v1" "fieldPath" $typeValue -}}
       {{- $_ := set $valueFrom "fieldRef" $fieldRef -}}
     {{- else -}}
       {{- printf "this will never happen, since all possible $typeKey values are covered by 'if'/'else' (typeKey: '%s')" $typeKey | fail -}}
