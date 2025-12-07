@@ -1,6 +1,9 @@
 {{- define "unibox.podTemplate" -}}
 
   {{- $secretInfo := include "unibox.sealedSecret.getInfo" .ctx | fromJson -}}
+  {{- $ctx := .ctx -}}
+  {{- $scope := .scope -}}
+  {{- $component := .component -}}
 
   {{- $document := dict -}}
 
@@ -36,28 +39,32 @@
     {{- $_ := set $spec "volumes" $volumes -}}
   {{- end -}}
 
-  {{- $containers := list -}}
   {{- $checksumsEnvSecret := list -}}
   {{- $checksumsEnvConfigMap := list -}}
 
-  {{- range include "unibox.foreach" (dict
-    "singleKey" "container"
-    "defaultName" .component
-    "callback" "unibox.container"
-    "callbackArgs" (dict
-      "secretInfo" $secretInfo
-      "volumeNames" $volumeNames
-    )
-    "asArray" true
-    "validateMap" "container"
-    "ctx" .ctx "scope" .scope
-  ) | fromJsonArray -}}
-    {{- $containers = append $containers .container -}}
-    {{- if .checksumEnvSecret -}}
-      {{- $checksumsEnvSecret = append $checksumsEnvSecret .checksumEnvSecret -}}
-    {{- end -}}
-    {{- if .checksumEnvConfigMap -}}
-      {{- $checksumsEnvConfigMap = append $checksumsEnvConfigMap .checksumEnvConfigMap -}}
+  {{- $containers := dict "container" list "initContainer" list -}}
+
+  {{- range list "container" "initContainer" -}}
+    {{- $key := . -}}
+    {{- range include "unibox.foreach" (dict
+      "singleKey" $key
+      "defaultName" $component
+      "callback" "unibox.container"
+      "callbackArgs" (dict
+        "secretInfo" $secretInfo
+        "volumeNames" $volumeNames
+      )
+      "asArray" true
+      "validateMap" "container"
+      "ctx" $ctx "scope" $scope
+    ) | fromJsonArray -}}
+      {{- $_ := append (index $containers $key) .container | set $containers $key -}}
+      {{- if .checksumEnvSecret -}}
+        {{- $checksumsEnvSecret = append $checksumsEnvSecret .checksumEnvSecret -}}
+      {{- end -}}
+      {{- if .checksumEnvConfigMap -}}
+        {{- $checksumsEnvConfigMap = append $checksumsEnvConfigMap .checksumEnvConfigMap -}}
+      {{- end -}}
     {{- end -}}
   {{- end -}}
 
@@ -115,7 +122,11 @@
     {{- end -}}
   {{- end -}}
 
-  {{- $_ := dict "containers" $containers "serviceAccountName" $serviceAccountName | merge $spec -}}
+  {{- $_ := dict "containers" $containers.container "serviceAccountName" $serviceAccountName | merge $spec -}}
+
+  {{- if (len $containers.initContainer) -}}
+    {{- $_ := set $spec "initContainers" $containers.initContainer -}}
+  {{- end -}}
 
   {{- $_ := set $document "spec" $spec -}}
 

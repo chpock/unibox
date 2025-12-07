@@ -576,6 +576,7 @@
       "enabled"
       "name" "nameOverride"
       "container" "containers"
+      "initContainer" "initContainers"
       "service" "services"
       "updateStrategy"
       "annotations" "podAnnotations"
