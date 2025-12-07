@@ -32,6 +32,12 @@
   {{- end -}}
   {{- $_ := set $spec "replicas" $replicas -}}
 
+  {{- $revisionHistoryLimit := 10 -}}
+  {{- if (hasKey .scope "revisionHistoryLimit") -}}
+    {{- $revisionHistoryLimit = dict "scope" .scope "key" "revisionHistoryLimit" "ctx" .ctx | include "unibox.render.integer" | atoi -}}
+  {{- end -}}
+  {{- $_ := set $spec "revisionHistoryLimit" $revisionHistoryLimit -}}
+
   {{- if (list .scope "updateStrategy" "map" | include "unibox.validate.type") -}}
     {{- $strategy := include "unibox.render" (dict "value" .scope.updateStrategy "ctx" .ctx "scope" .scope) | fromYaml -}}
     {{- $_ := set $spec "strategy" $strategy -}}

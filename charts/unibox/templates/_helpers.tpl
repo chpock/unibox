@@ -581,6 +581,7 @@
       "annotations" "podAnnotations"
       "labels" "podLabels"
       "replicas"
+      "revisionHistoryLimit"
       "serviceAccount"
       "volume" "volumes"
     )
