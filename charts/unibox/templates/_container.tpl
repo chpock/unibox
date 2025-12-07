@@ -698,9 +698,9 @@
     {{- printf "unknown volume name is specified '%s', %s" .name $knownVolumeNames | list .scope | include "unibox.fail" -}}
   {{- end -}}
 
-  {{- if (and (hasKey . "volumeNames") (hasKey .scope "subPaths") (hasKey .scope "subPathsExpr")) -}}
+  {{- if (and (hasKey . "volumeNames") (kindIs "map" .scope) (hasKey .scope "subPaths") (hasKey .scope "subPathsExpr")) -}}
     {{- list .scope "both .subPaths and .subPathsExpr were specified for the mount, only one of those keys should be specified" | include "unibox.fail" -}}
-  {{- else if (and (hasKey . "volumeNames") (or (hasKey .scope "subPaths") (hasKey .scope "subPathsExpr"))) -}}
+  {{- else if (and (hasKey . "volumeNames") (kindIs "map" .scope) (or (hasKey .scope "subPaths") (hasKey .scope "subPathsExpr"))) -}}
 
     {{- $subPathsKey := hasKey .scope "subPaths" | ternary "subPaths" "subPathsExpr" -}}
     {{- $subPathKey := hasKey .scope "subPaths" | ternary "subPath" "subPathExpr" -}}
