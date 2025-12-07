@@ -16,7 +16,7 @@
     "callbackArgs" (dict
       "volumeNames" .volumeNames
     )
-    "asArray" true
+    "asMergedArray" true
     "isEntryMap" false
     "ctx" .ctx "scope" .scope
   ) | fromJsonArray -}}
@@ -688,7 +688,7 @@
 
 {{- define "unibox.container.mount.entry" -}}
 
-  {{- if (not (has .name .volumeNames)) -}}
+  {{- if (and (hasKey . "volumeNames") (not (has .name .volumeNames))) -}}
     {{- $knownVolumeNames := "" -}}
     {{- if (len .volumeNames) -}}
       {{- $knownVolumeNames = sortAlpha .volumeNames | join "', '" | printf "the following volumes are defined in the parent object: '%s'" -}}
@@ -698,60 +698,108 @@
     {{- printf "unknown volume name is specified '%s', %s" .name $knownVolumeNames | list .scope | include "unibox.fail" -}}
   {{- end -}}
 
-  {{- $document := dict "name" .name -}}
+  {{- if (and (hasKey . "volumeNames") (hasKey .scope "subPaths") (hasKey .scope "subPathsExpr")) -}}
+    {{- list .scope "both .subPaths and .subPathsExpr were specified for the mount, only one of those keys should be specified" | include "unibox.fail" -}}
+  {{- else if (and (hasKey . "volumeNames") (or (hasKey .scope "subPaths") (hasKey .scope "subPathsExpr"))) -}}
 
-  {{- if (kindIs "map" .scope) -}}
+    {{- $subPathsKey := hasKey .scope "subPaths" | ternary "subPaths" "subPathsExpr" -}}
+    {{- $subPathKey := hasKey .scope "subPaths" | ternary "subPath" "subPathExpr" -}}
 
-    {{- template "unibox.validate.map" (list .scope "container.mount") -}}
-
-    {{- if (list .scope "path" "scalar" | include "unibox.validate.type") -}}
-      {{- $mountPath := dict "value" .scope.path "ctx" .ctx "scope" .scopeLocal | include "unibox.render" -}}
-      {{- $_ := set $document "mountPath" $mountPath -}}
-    {{- else -}}
-      {{- list .scope "there is no mandatory .path field specified for the mount" | include "unibox.fail" -}}
+    {{- $otherKeys := omit .scope "subPaths" "subPathsExpr" "__path__" | keys -}}
+    {{- if (len $otherKeys) -}}
+      {{- sortAlpha $otherKeys | join "', '" | printf "the following fields can not be specified for object when '%s' is specified: '%s'" $subPathsKey | list .scope | include "unibox.fail" -}}
     {{- end -}}
 
-    {{- if (hasKey .scope "propagation") -}}
-      {{- $mountPropagation := list "None" "Bidirectional" "HostToContainer"
-          | dict "scope" .scope "key" "type" "ctx" .ctx "scopeLocal" .scopeLocal "list"
-          | include "unibox.render.enum" -}}
-      {{- $_ := set $document "mountPropagation" $mountPropagation -}}
-    {{- end -}}
-
-    {{- $readOnly := list "true" "false" "recursive"
-        | dict "scope" .scope "key" "type" "ctx" .ctx "scopeLocal" .scopeLocal "default" "false" "list"
-        | include "unibox.render.enum" -}}
-
-    {{- if (eq $readOnly "true") -}}
-      {{- $_ := set $document "readOnly" true -}}
-    {{- else if (eq $readOnly "recursive") -}}
-      {{- $_ := set $document "readOnly" true -}}
-      {{- $_ := set $document "recursiveReadOnly" true -}}
-    {{- else if (eq $readOnly "false") -}}
-      {{- $_ := set $document "readOnly" false -}}
-    {{- else -}}
-      {{- printf "this will never happen, since all possible $readOnly values are covered by 'if'/'else' (typeKey: '%s')" $readOnly | fail -}}
-    {{- end -}}
-
-    {{- if (and (hasKey .scope "subPath") (hasKey .scope "subPathExpr")) -}}
-      {{- list .scope "both .subPath and .subPathExpr were specified for the mount, only one of those keys should be specified" | include "unibox.fail" -}}
-    {{- else if (hasKey .scope "subPath") -}}
-      {{- $subPath := dict "value" .scope.subPath "ctx" .ctx "scope" .scopeLocal | include "unibox.render" -}}
-      {{- $_ := set $document "subPath" $subPath -}}
-    {{- else if (hasKey .scope "subPathExpr") -}}
-      {{- $subPathExpr := dict "value" .scope.subPathExpr "ctx" .ctx "scope" .scopeLocal | include "unibox.render" -}}
-      {{- $_ := set $document "subPathExpr" $subPathExpr -}}
-    {{- end -}}
+    {{- include "unibox.foreach" (dict
+      "singleKey" false
+      "pluralKey" $subPathsKey
+      "callback" "unibox.container.mount.entry"
+      "callbackArgs" (dict
+        "subPathKey" $subPathKey "volumeName" .name
+      )
+      "asMergedArray" true
+      "isEntryMap" false
+      "ctx" .ctx "scope" .scope "scopeLocal" .scopeLocal
+    ) -}}
 
   {{- else -}}
 
-    {{- $_ := list .scopeParent .name "scalar" | include "unibox.validate.type" -}}
-    {{- $mountPath := include "unibox.render" (dict "value" .scope "ctx" .ctx "scope" .scopeLocal) -}}
+    {{- $document := dict -}}
 
-    {{- $_ := set $document "mountPath" $mountPath -}}
+    {{- if (hasKey . "subPathKey") -}}
+      {{- $_ := set $document .subPathKey .name -}}
+      {{- $_ := set $document "name" .volumeName -}}
+    {{- else -}}
+      {{- $_ := set $document "name" .name -}}
+    {{- end -}}
+
+    {{- if (kindIs "map" .scope) -}}
+
+      {{- template "unibox.validate.map" (list .scope "container.mount") -}}
+
+      {{- $subPathsKeys := pick .scope "subPaths" "subPathsExpr" | keys -}}
+
+      {{- if (hasKey . "subPathKey") -}}
+        {{- range pick .scope "subPath" "subPathExpr" | keys -}}
+          {{- $subPathsKeys = append $subPathsKeys . -}}
+        {{- end -}}
+      {{- end -}}
+
+      {{- if (len $subPathsKeys) -}}
+        {{- sortAlpha $subPathsKeys | join "', '" | printf "the following fields can not be specified here: '%s'" | list .scope | include "unibox.fail" -}}
+      {{- end -}}
+
+      {{- if (list .scope "path" "scalar" | include "unibox.validate.type") -}}
+        {{- $mountPath := dict "value" .scope.path "ctx" .ctx "scope" .scopeLocal | include "unibox.render" -}}
+        {{- $_ := set $document "mountPath" $mountPath -}}
+      {{- else -}}
+        {{- list .scope "there is no mandatory .path field specified for the mount" | include "unibox.fail" -}}
+      {{- end -}}
+
+      {{- if (hasKey .scope "propagation") -}}
+        {{- $mountPropagation := list "None" "Bidirectional" "HostToContainer"
+            | dict "scope" .scope "key" "type" "ctx" .ctx "scopeLocal" .scopeLocal "list"
+            | include "unibox.render.enum" -}}
+        {{- $_ := set $document "mountPropagation" $mountPropagation -}}
+      {{- end -}}
+
+      {{- $readOnly := list "true" "false" "recursive"
+          | dict "scope" .scope "key" "type" "ctx" .ctx "scopeLocal" .scopeLocal "default" "false" "list"
+          | include "unibox.render.enum" -}}
+
+      {{- if (eq $readOnly "true") -}}
+        {{- $_ := set $document "readOnly" true -}}
+      {{- else if (eq $readOnly "recursive") -}}
+        {{- $_ := set $document "readOnly" true -}}
+        {{- $_ := set $document "recursiveReadOnly" true -}}
+      {{- else if (eq $readOnly "false") -}}
+        {{- $_ := set $document "readOnly" false -}}
+      {{- else -}}
+        {{- printf "this will never happen, since all possible $readOnly values are covered by 'if'/'else' (typeKey: '%s')" $readOnly | fail -}}
+      {{- end -}}
+
+      {{- if (and (hasKey .scope "subPath") (hasKey .scope "subPathExpr")) -}}
+        {{- list .scope "both .subPath and .subPathExpr were specified for the mount, only one of those keys should be specified" | include "unibox.fail" -}}
+      {{- else if (hasKey .scope "subPath") -}}
+        {{- $subPath := dict "value" .scope.subPath "ctx" .ctx "scope" .scopeLocal | include "unibox.render" -}}
+        {{- $_ := set $document "subPath" $subPath -}}
+      {{- else if (hasKey .scope "subPathExpr") -}}
+        {{- $subPathExpr := dict "value" .scope.subPathExpr "ctx" .ctx "scope" .scopeLocal | include "unibox.render" -}}
+        {{- $_ := set $document "subPathExpr" $subPathExpr -}}
+      {{- end -}}
+
+    {{- else -}}
+
+      {{- $_ := list .scopeParent .name "scalar" | include "unibox.validate.type" -}}
+      {{- $mountPath := include "unibox.render" (dict "value" .scope "ctx" .ctx "scope" .scopeLocal) -}}
+
+      {{- $_ := set $document "mountPath" $mountPath -}}
+      {{- $_ := set $document "readOnly" false -}}
+
+    {{- end -}}
+
+    {{- list $document | toJson -}}
 
   {{- end -}}
-
-  {{- toJson $document -}}
 
 {{- end -}}

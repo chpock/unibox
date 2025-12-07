@@ -465,8 +465,13 @@
 
   {{- $callback := .callback -}}
   {{- $callbackArgs := default dict .callbackArgs -}}
+
   {{- $asDocumentArray := .asDocumentArray -}}
   {{- $asArray := .asArray -}}
+  {{- $asMergedArray := default false .asMergedArray -}}
+  {{- if $asMergedArray -}}
+    {{- $asArray = true -}}
+  {{- end -}}
   {{- $asText := .asText -}}
   {{- $asJson := and (or $asArray (not .asDocument)) (not $asDocumentArray) (not $asText) -}}
   {{- $result := list -}}
@@ -481,14 +486,18 @@
     {{- end -}}
 
     {{- if not $asText -}}
-      {{- if $asDocumentArray -}}
+      {{- if (or $asDocumentArray $asMergedArray) -}}
         {{- $out = fromJsonArray $out -}}
       {{- else -}}
         {{- $out = fromJson $out -}}
       {{- end -}}
     {{- end -}}
 
-    {{- if $asArray -}}
+    {{- if $asMergedArray -}}
+      {{- range $out -}}
+        {{- $result = append $result . -}}
+      {{- end -}}
+    {{- else if $asArray -}}
       {{- $result = append $result $out -}}
     {{- else if $asDocumentArray -}}
       {{- range $out -}}
@@ -615,7 +624,11 @@
       "secret" "configMap" "resourceField" "field"
     )
     "container.mount" (list
-      "path" "propagation" "readOnly" "subPath" "subPathExpr"
+      "path"
+      "propagation"
+      "readOnly"
+      "subPath" "subPathExpr"
+      "subPaths" "subPathsExpr"
     )
     "volume.secret" (list "secret" "defaultMode" "items" "optional")
     "volume.configMap" (list "configMap" "defaultMode" "items" "optional")
