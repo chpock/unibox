@@ -587,6 +587,7 @@
       "ports"
       "probes"
       "resources"
+      "mount" "mounts"
     )
     "container.image" (list
       "repository"
@@ -612,6 +613,9 @@
     )
     "container.env.field" (list
       "secret" "configMap" "resourceField" "field"
+    )
+    "container.mount" (list
+      "path" "propagation" "readOnly" "subPath" "subPathExpr"
     )
     "volume.secret" (list "secret" "defaultMode" "items" "optional")
     "volume.configMap" (list "configMap" "defaultMode" "items" "optional")

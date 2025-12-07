@@ -46,6 +46,7 @@
     "callback" "unibox.container"
     "callbackArgs" (dict
       "secretInfo" $secretInfo
+      "volumeNames" $volumeNames
     )
     "asArray" true
     "validateMap" "container"
