@@ -586,6 +586,7 @@
       "serviceAccount"
       "volume" "volumes"
       "hostAliases"
+      "priorityClassName"
     )
     "container" (list
       "props" "properties"

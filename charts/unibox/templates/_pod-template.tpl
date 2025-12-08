@@ -126,6 +126,11 @@
     {{- end -}}
   {{- end -}}
 
+  {{- $priorityClassName := "" -}}
+  {{- if (list .scope "priorityClassName" "scalar" | include "unibox.validate.type") -}}
+    {{- $priorityClassName = dict "value" .scope.priorityClassName "ctx" .ctx "scope" .scope | include "unibox.render" -}}
+  {{- end -}}
+
   {{- $hostAliases := include "unibox.foreach" (dict
     "singleKey" false
     "pluralKey" "hostAliases"
@@ -139,7 +144,11 @@
     {{- $_ := set $spec "hostAliases" $hostAliases -}}
   {{- end -}}
 
-  {{- $_ := dict "containers" $containers.container "serviceAccountName" $serviceAccountName | merge $spec -}}
+  {{- $_ := dict
+      "containers" $containers.container
+      "serviceAccountName" $serviceAccountName
+      "priorityClassName" $priorityClassName
+  | merge $spec -}}
 
   {{- $_ := set $document "spec" $spec -}}
 
