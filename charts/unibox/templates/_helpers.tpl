@@ -585,6 +585,7 @@
       "revisionHistoryLimit"
       "serviceAccount"
       "volume" "volumes"
+      "hostAliases"
     )
     "container" (list
       "props" "properties"

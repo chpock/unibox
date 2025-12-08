@@ -68,6 +68,10 @@
     {{- end -}}
   {{- end -}}
 
+  {{- if (len $containers.initContainer) -}}
+    {{- $_ := set $spec "initContainers" $containers.initContainer -}}
+  {{- end -}}
+
   {{- $annotations := dict -}}
 
   {{- if $checksumsEnvSecret -}}
@@ -122,14 +126,56 @@
     {{- end -}}
   {{- end -}}
 
-  {{- $_ := dict "containers" $containers.container "serviceAccountName" $serviceAccountName | merge $spec -}}
+  {{- $hostAliases := include "unibox.foreach" (dict
+    "singleKey" false
+    "pluralKey" "hostAliases"
+    "callback" "unibox.podTemplate.hostAliases.entry"
+    "asArray" true
+    "isEntryMap" false
+    "ctx" .ctx "scope" .scope
+  ) | fromJsonArray -}}
 
-  {{- if (len $containers.initContainer) -}}
-    {{- $_ := set $spec "initContainers" $containers.initContainer -}}
+  {{- if (len $hostAliases) -}}
+    {{- $_ := set $spec "hostAliases" $hostAliases -}}
   {{- end -}}
+
+  {{- $_ := dict "containers" $containers.container "serviceAccountName" $serviceAccountName | merge $spec -}}
 
   {{- $_ := set $document "spec" $spec -}}
 
   {{- toJson $document -}}
+
+{{- end -}}
+
+{{- define "unibox.podTemplate.hostAliases.entry" -}}
+
+  {{- /** TODO: add validation for ipv4/ipv6 (.name field here) **/ -}}
+
+  {{- $hostnames := list -}}
+
+  {{- if (kindIs "slice" .scope) -}}
+
+    {{- $scope := .scope -}}
+    {{- $scopeLocal := .scopeLocal -}}
+    {{- $scopeParent := .scopeParent -}}
+    {{- $name := .name -}}
+    {{- $ctx := .ctx -}}
+
+    {{- range until (len .scope) -}}
+      {{- $_ := list $scopeParent $name . "scalar" | include "unibox.validate.type" -}}
+      {{- $hostname := dict "value" (index $scope .) "ctx" $ctx "scope" $scope "scopeLocal" $scopeLocal | include "unibox.render" -}}
+      {{- $hostnames = append $hostnames $hostname -}}
+    {{- end -}}
+
+  {{- else -}}
+
+    {{- $_ := list .scopeParent .name "scalar" | include "unibox.validate.type" -}}
+    {{- $hostname := include "unibox.render" (dict "value" .scope "ctx" .ctx "scope" .scopeLocal) -}}
+
+    {{- $hostnames = append $hostnames $hostname -}}
+
+  {{- end -}}
+
+  {{- dict "ip" .name "hostnames" $hostnames | toJson -}}
 
 {{- end -}}
